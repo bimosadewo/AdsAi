@@ -26,6 +26,15 @@ agar kode Fase 1–4 tetap kompatibel saat SaaS dibangun.
 7. **Kepatuhan**: kebijakan privasi, S&K, UU PDP, Google API Services User Data Policy,
    verifikasi OAuth Google (domain, homepage, video demo).
 
+## Standar keamanan minimum (pelajaran dari Adspirer)
+
+- Login klien: **OAuth 2.1 + PKCE**; transport MCP Streamable HTTP lewat HTTPS.
+- Refresh token platform **terenkripsi at rest** (KMS), tidak pernah dikirim ke sesi AI; diperbarui otomatis.
+- **Tidak menyimpan data kampanye** jangka panjang — baca langsung dari API (cache singkat boleh, mis. ≤15 menit).
+- Tidak mencatat isi percakapan; log audit hanya untuk perubahan akun (sudah ada di AdsAi).
+- Integrasi pihak ketiga (GA4, CRM) lewat broker token (mis. Pipedream) agar kredensial mentah tidak dipegang.
+- Tool destruktif dikunci flag eksplisit (AdsAi: `confirm=true` + tidak ada tool hapus permanen).
+
 ## Titik sambung dengan kode sekarang
 
 - `Ads(settings)` → dibuat per tenant dari kredensial di database (bukan `.env`).

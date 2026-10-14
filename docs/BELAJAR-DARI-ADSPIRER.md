@@ -155,6 +155,28 @@ Dari skema `get_campaign_targeting`, `update_campaign`, `update_location_targeti
   klien, berbahasa Indonesia, dengan kandidat negatif yang sudah melewati filter pengaman dan tanpa kontak klien.
   Bisa dijadikan deliverable paket jasa ("Project AI khusus untuk bisnis Anda").
 
+### Putaran 6 (dokumentasi publik adspirer.com, via pencarian web)
+
+Domain adspirer.com diblokir di jaringan sesi cloud; isi diambil lewat pencarian web. Semua klaim dari vendor.
+- **Arsitektur:** remote MCP, satu endpoint, Streamable HTTP, **OAuth 2.1 + PKCE**. Access token platform 1 jam,
+  refresh token 30 hari, diperbarui otomatis; token **terenkripsi at rest** di server, tidak pernah di sesi AI.
+- **Data:** data kampanye tidak disimpan permanen (dibaca langsung dari API); percakapan tidak dicatat.
+- **Integrasi pihak ketiga (GA4, Klaviyo):** token disimpan di **Pipedream** dan panggilan diproksikan ke MCP
+  Pipedream — Adspirer tidak memegang kredensial mentahnya. Pola ini layak bila AdsAi menambah GA4/CRM.
+- **Pengaman:** tool destruktif dikunci flag `confirm_delete`; kampanye baru dijeda.
+- **Agensi:** akses lewat MCC/Business Manager; isolasi per pengguna. **Dokumen Adspirer sendiri mengakui tidak
+  dirancang untuk alur pelaporan klien agensi** dan menyarankan alat dashboard untuk agensi 10+ klien.
+- **Tidak ada penjadwal bawaan** — laporan rutin = prompt yang dijalankan ulang dari sisi klien AI.
+- Angka tidak konsisten antar halaman (4 platform/100+ tools vs 6 platform/400+ tools).
+
+**Implikasi untuk AdsAi:** celah yang diakui Adspirer (pelaporan agensi multi-klien, otomatis) adalah fokus
+AdsAi Model A — laporan mingguan & alert WA terjadwal, `clients.yaml`, kit dossier per klien. Pola keamanan
+(OAuth 2.1 + PKCE, token terenkripsi, tanpa simpan data kampanye, tanpa log percakapan) masuk rancangan Fase 5.
+
+Sumber: developer.adspirer.com/introduction, adspirer.com/docs/introduction, adspirer.com/docs/how-it-works,
+adspirer.com/docs/knowledge-base/mcp-server-comparison, adspirer.com/privacy,
+adspirer.com/blog/automation-platform-for-agencies.
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
@@ -164,3 +186,4 @@ Dari skema `get_campaign_targeting`, `update_campaign`, `update_location_targeti
 | 2026-10-14 | `get_tool_schema` 8 tool ekstensi + skill `extensions.md` | Lihat §5 putaran 3 — tidak memakai kuota |
 | 2026-10-14 | `get_tool_schema` 7 tool targeting | Lihat §5 putaran 4 — tidak memakai kuota |
 | 2026-10-14 | Screenshot halaman Expert Space (adspirer.ai) dari pengguna | Lihat §5 putaran 5 |
+| 2026-10-14 | Dokumentasi publik adspirer.com (via pencarian web) | Lihat §5 putaran 6 |
