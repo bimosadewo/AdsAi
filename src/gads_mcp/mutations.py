@@ -4,12 +4,13 @@ Alur setiap operasi:
   1. Ambil kondisi saat ini (untuk log "sebelum" dan pengecekan pengaman).
   2. Cek aturan pengaman AdsAi (mode baca-saja, batas budget, dll.).
   3. Kirim ke Google dengan validate_only=True  -> pratinjau (tidak ada yang berubah).
-  4. Hanya bila confirm=True: kirim sungguhan, lalu tulis log audit.
+  4. Hanya bila confirm=True: kirim sungguhan, tulis log audit, lalu baca ulang kondisi
+     (verifikasi) agar yang dilaporkan adalah yang benar-benar terjadi di akun.
 """
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from google.ads.googleads.errors import GoogleAdsException
 
@@ -21,6 +22,7 @@ STATUSES = ("ENABLED", "PAUSED")
 LEVELS = ("campaign", "ad_group", "keyword")
 BID_STRATEGIES = ("MAXIMIZE_CONVERSIONS", "MAXIMIZE_CLICKS", "MANUAL_CPC")
 COUNTING_TYPES = ("ONE_PER_CLICK", "MANY_PER_CLICK")
+MIN_CONVERSIONS_FOR_TARGET = 30  # konversi 30 hari minimum sebelum memasang Target CPA
 
 
 def _digits(value: Any, name: str) -> str:
@@ -89,6 +91,7 @@ class Mutator:
         operations: list,
         confirm: bool,
         notes: list[str] | None = None,
+        verify: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         ensure_writable(self.safety)
         # Selalu validasi dulu ke Google; bila gagal, perubahan sungguhan tidak pernah dikirim.
@@ -105,7 +108,13 @@ class Mutator:
             }
         resources = self._send(service, method, cid, operations, validate_only=False)
         self.audit.write(cid, action, target, before, after, "BERHASIL", "; ".join(notes or []) or None)
-        return {"status": "DIJALANKAN", **base, "resource": resources}
+        result = {"status": "DIJALANKAN", **base, "resource": resources}
+        if verify:
+            try:
+                result["terverifikasi"] = verify()
+            except Exception as ex:  # perubahan sudah terjadi; verifikasi gagal tidak membatalkannya
+                result["terverifikasi"] = f"Gagal membaca ulang: {ex}"
+        return result
 
     # ---------- negative keywords ----------
 
@@ -145,6 +154,7 @@ class Mutator:
             before={"jumlah_negatif": len(existing)}, after={"ditambahkan": new},
             service="CampaignCriterionService", method="mutate_campaign_criteria",
             operations=ops, confirm=confirm, notes=notes,
+            verify=lambda: {"jumlah_negatif": len(self._campaign_negatives(cid, campaign_id))},
         )
 
     def remove_negative_keywords(self, cid: str, campaign_id: str, texts: list[str], confirm: bool) -> dict:
@@ -169,6 +179,7 @@ class Mutator:
             before={"dihapus": removed}, after=None,
             service="CampaignCriterionService", method="mutate_campaign_criteria",
             operations=ops, confirm=confirm,
+            verify=lambda: {"jumlah_negatif": len(self._campaign_negatives(cid, campaign_id))},
         )
 
     # ---------- budget ----------
@@ -204,6 +215,9 @@ class Mutator:
             before={"budget_harian": current}, after={"budget_harian": daily_budget},
             service="CampaignBudgetService", method="mutate_campaign_budgets",
             operations=[op], confirm=confirm, notes=notes,
+            verify=lambda: {"budget_harian": (self.ads.search(cid, (
+                f"SELECT campaign_budget.amount_micros FROM campaign WHERE campaign.id = {campaign_id}"
+            )) or [{}])[0].get("campaign_budget.amount")},
         )
 
     def _budget_resource(self, cid: str, campaign_id: str) -> str:
@@ -270,10 +284,17 @@ class Mutator:
                 op.update_mask.paths.append("status")
                 ops.append(op)
             service, method = "AdGroupCriterionService", "mutate_ad_group_criteria"
+        verify = None
+        if level == "campaign":
+            verify = lambda: self.ads.search(cid, "SELECT campaign.id, campaign.status FROM campaign "  # noqa: E731
+                                                  f"WHERE campaign.id IN ({','.join(ids)})")
+        elif level == "ad_group":
+            verify = lambda: self.ads.search(cid, "SELECT ad_group.id, ad_group.status FROM ad_group "  # noqa: E731
+                                                  f"WHERE ad_group.id IN ({','.join(ids)})")
         return self._finish(
             cid=cid, action=f"set_status_{level}", target={"level": level, "ids": ids},
             before=before, after={"status": status},
-            service=service, method=method, operations=ops, confirm=confirm,
+            service=service, method=method, operations=ops, confirm=confirm, verify=verify,
         )
 
     # ---------- conversion action ----------
@@ -290,13 +311,14 @@ class Mutator:
         status: str | None = None,
     ) -> dict:
         ca_id = _digits(conversion_action_id, "conversion_action_id")
-        rows = self.ads.search(cid, (
+        q_ca = (
             "SELECT conversion_action.id, conversion_action.name, conversion_action.type, "
             "conversion_action.primary_for_goal, conversion_action.counting_type, "
             "conversion_action.click_through_lookback_window_days, "
             "conversion_action.view_through_lookback_window_days, conversion_action.status "
             f"FROM conversion_action WHERE conversion_action.id = {ca_id}"
-        ))
+        )
+        rows = self.ads.search(cid, q_ca)
         if not rows:
             raise ValueError(f"Conversion action {ca_id} tidak ditemukan.")
         before = rows[0]
@@ -336,14 +358,20 @@ class Mutator:
             after["status"] = st
         if not after:
             raise ValueError("Tidak ada field yang diubah.")
+        ca_type = str(before.get("conversion_action.type"))
+        notes = None
+        if "GOOGLE_HOSTED" in ca_type or "WEBPAGE_CODELESS" in ca_type:
+            notes = ["Konversi buatan Google (mis. 'Clicks to call', 'Local actions', 'Add to basket (page load)') "
+                     "biasanya ditolak API ('Mutates are not allowed') dan hanya bisa diubah dari UI Google Ads."]
+        elif "AD_CALL" in ca_type:
+            notes = ["Untuk 'Calls from ads', sebagian field (mis. view-through, cara hitung) hanya bisa diubah di UI."]
         return self._finish(
             cid=cid, action="update_conversion_action",
             target={"conversion_action_id": ca_id, "nama": before.get("conversion_action.name")},
             before=before, after=after,
             service="ConversionActionService", method="mutate_conversion_actions",
-            operations=[op], confirm=confirm,
-            notes=["Konversi buatan Google (mis. 'Clicks to call', 'Local actions') biasanya hanya bisa "
-                   "diubah dari UI Google Ads."] if "GOOGLE_HOSTED" in str(before.get("conversion_action.type")) else None,
+            operations=[op], confirm=confirm, notes=notes,
+            verify=lambda: (self.ads.search(cid, q_ca) or [{}])[0],
         )
 
     # ---------- bidding ----------
@@ -358,6 +386,17 @@ class Mutator:
                                     f"WHERE campaign.id = {campaign_id}")
         if not rows:
             raise ValueError(f"Kampanye {campaign_id} tidak ditemukan.")
+        notes = ["Mengganti strategi bidding memicu fase belajar ulang 1-2 minggu."]
+        if strategy == "MAXIMIZE_CONVERSIONS" and target_cpa:
+            hist = self.ads.search(cid, "SELECT metrics.conversions FROM campaign "
+                                        f"WHERE campaign.id = {campaign_id} AND segments.date DURING LAST_30_DAYS")
+            conv30 = sum(float(r.get("metrics.conversions") or 0) for r in hist)
+            if conv30 < MIN_CONVERSIONS_FOR_TARGET:
+                notes.append(
+                    f"Hanya {conv30:g} konversi dalam 30 hari (disarankan >= {MIN_CONVERSIONS_FOR_TARGET}). "
+                    "Target CPA tanpa histori cukup biasanya membuat iklan kurang tayang; pertimbangkan "
+                    "Maksimalkan Konversi tanpa target dulu."
+                )
         op = self.gc.get_type("CampaignOperation")
         camp = op.update
         camp.resource_name = self.gc.get_service("CampaignService").campaign_path(cid, campaign_id)
@@ -373,13 +412,14 @@ class Mutator:
         else:
             camp.manual_cpc.enhanced_cpc_enabled = False
             op.update_mask.paths.append("manual_cpc.enhanced_cpc_enabled")
-        notes = ["Mengganti strategi bidding memicu fase belajar ulang 1-2 minggu."]
         return self._finish(
             cid=cid, action="update_bid_strategy",
             target={"campaign_id": campaign_id, "kampanye": rows[0].get("campaign.name")},
             before={"strategi": rows[0].get("campaign.bidding_strategy_type")}, after=after,
             service="CampaignService", method="mutate_campaigns", operations=[op],
             confirm=confirm, notes=notes,
+            verify=lambda: (self.ads.search(cid, "SELECT campaign.bidding_strategy_type FROM campaign "
+                                                 f"WHERE campaign.id = {campaign_id}") or [{}])[0],
         )
 
     # ---------- keywords ----------

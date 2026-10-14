@@ -20,13 +20,17 @@ from .safety import AuditLog
 from .service import Context, alerts_message, build_weekly_report, send_message
 
 INSTRUCTIONS = """\
-Server ini membaca dan mengelola akun Google Ads klien agensi.
-- Mulai dengan list_accounts (atau list_clients) untuk mendapatkan customer_id.
-- Semua nilai uang sudah dalam mata uang akun (bukan micros).
+Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
+- Mulai dengan list_clients / client_health (atau list_accounts) untuk customer_id dan target klien.
+- Semua nilai uang dalam mata uang akun (mis. 50000 = Rp50.000), bukan micros.
+- Cek conversion_actions sebelum menilai CPA: konversi Utama > 3 atau aksi ringan sebagai Utama
+  berarti angka konversi belum bisa dipercaya.
+- Tools yang MENGUBAH akun selalu dua langkah: confirm=false (pratinjau tervalidasi Google, tidak
+  mengubah apa pun) -> tunjukkan rencana ke pengguna -> confirm=true hanya setelah pengguna jelas
+  setuju. Setelah itu laporkan isi 'terverifikasi' (kondisi akun yang dibaca ulang).
+- send_to_client mengirim pesan ke klien: pratinjau dulu, kirim hanya setelah disetujui.
+- Jangan mengarang angka; bila tool gagal, sebutkan error-nya.
 - Untuk kebutuhan yang tidak tercakup tool lain, pakai run_query dengan GAQL.
-- Tools yang MENGUBAH akun selalu dua langkah: panggil dulu dengan confirm=false (pratinjau,
-  divalidasi Google tanpa mengubah apa pun), tunjukkan rencananya ke pengguna, dan baru panggil
-  dengan confirm=true setelah pengguna jelas menyetujui. Jangan pernah langsung confirm=true.
 """
 
 mcp = MCPServer("google-ads", instructions=INSTRUCTIONS)

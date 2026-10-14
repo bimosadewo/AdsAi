@@ -53,6 +53,20 @@ SOP harian/mingguan tim: [OPERASIONAL.md](OPERASIONAL.md).
 - N-gram search terms & usulan negative keyword otomatis
 - Deteksi anomali dan proyeksi pacing budget bulanan
 
+## Backlog dari perbandingan dengan Adspirer
+
+Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
+
+| Prioritas | Fitur |
+|---|---|
+| Tinggi | Shared negative keyword list (satu daftar untuk banyak kampanye) |
+| Tinggi | `campaign_structure`: grup iklan, iklan, ekstensi dalam satu panggilan |
+| Tinggi | Iklan RSA: baca, buat, ubah headline/deskripsi |
+| Sedang | Ekstensi (sitelink, callout, snippet, telepon) |
+| Sedang | Keyword research (Keyword Planner), jadwal iklan, lokasi, perangkat |
+| Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
+| Rendah | Membuat kampanye baru (Model A: tim membuat di UI) |
+
 ## Ide paket jasa (untuk divalidasi ke klien)
 | Paket | Isi |
 |---|---|

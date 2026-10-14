@@ -152,3 +152,33 @@ def test_add_keywords(tmp_path):
     assert crit.keyword.match_type.name == "EXACT"
     assert crit.cpc_bid_micros == 5_000_000_000
     assert crit.status.name == "PAUSED"
+
+
+def test_confirm_reads_back_result(tmp_path):
+    row = [{"campaign.name": "Lead-Search", "campaign_budget.amount": 50_000.0,
+            "campaign_budget.explicitly_shared": False, "campaign_budget.reference_count": 1}]
+    ads, m, _ = make(tmp_path, lambda cid, q: row)
+    res = m.update_budget(CID, "22806119404", 60_000, confirm=True)
+    assert res["status"] == "DIJALANKAN"
+    assert res["terverifikasi"] == {"budget_harian": 50_000.0}  # data palsu: nilai baca-ulang dari "akun"
+    assert "campaign_budget.amount_micros" in ads.queries[-1]
+
+
+def test_target_cpa_warns_without_history(tmp_path):
+    def search(cid, q):
+        if "metrics.conversions" in q:
+            return [{"metrics.conversions": 4.0}]
+        return [{"campaign.name": "Baru", "campaign.bidding_strategy_type": "MAXIMIZE_CLICKS"}]
+
+    _, m, _ = make(tmp_path, search)
+    res = m.update_bid_strategy(CID, "1", "MAXIMIZE_CONVERSIONS", confirm=False, target_cpa=15_000)
+    assert any("Hanya 4 konversi" in n for n in res["catatan"])
+    res = m.update_bid_strategy(CID, "1", "MAXIMIZE_CONVERSIONS", confirm=False)
+    assert not any("Hanya" in n for n in res["catatan"])
+
+
+def test_conversion_notes_for_google_hosted(tmp_path):
+    row = [{"conversion_action.name": "Clicks to call", "conversion_action.type": "GOOGLE_HOSTED"}]
+    _, m, _ = make(tmp_path, lambda cid, q: row)
+    res = m.update_conversion_action(CID, "7355168854", confirm=False, primary_for_goal=False)
+    assert "Mutates are not allowed" in res["catatan"][0]

@@ -205,6 +205,8 @@ def budget_pacing(mtd_cost: float, monthly_budget: float, today: date) -> dict[s
         "persen_proyeksi": round(ratio * 100, 1),
         "status": status,
         "saran_budget_harian": round(max(monthly_budget - mtd_cost, 0) / remaining_days, 0) if remaining_days else None,
+        "catatan": "Google boleh membelanjakan hingga 2x budget harian pada satu hari dan menyeimbangkannya "
+                   "dalam sebulan; lonjakan satu hari belum tentu masalah.",
     }
 
 

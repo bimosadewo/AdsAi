@@ -1,0 +1,8 @@
+{
+  "name": "adsai",
+  "displayName": "AdsAi — Google Ads untuk Agensi",
+  "description": "Kontrak keamanan dan alur kerja (audit, optimasi, laporan) untuk server MCP AdsAi. Bahasa Indonesia.",
+  "version": "0.5.0",
+  "license": "Proprietary (bagian yang diadaptasi dari Adspirer berlisensi MIT, lihat NOTICE)",
+  "keywords": ["google-ads", "ppc", "agensi", "indonesia", "mcp"]
+}

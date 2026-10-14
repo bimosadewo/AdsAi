@@ -11,7 +11,8 @@ cron / Task Scheduler ──► adsai alerts / report ──► WhatsApp & email
 ```
 
 Model bisnis: **layanan terkelola** — tim agensi memakai AdsAi, klien menerima laporan & alert.
-Rencana lengkap: [docs/ROADMAP.md](docs/ROADMAP.md) · SOP tim: [docs/OPERASIONAL.md](docs/OPERASIONAL.md)
+Rencana lengkap: [docs/ROADMAP.md](docs/ROADMAP.md) · SOP tim: [docs/OPERASIONAL.md](docs/OPERASIONAL.md) ·
+Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPIRER.md)
 
 ## Status
 
@@ -24,7 +25,7 @@ Rencana lengkap: [docs/ROADMAP.md](docs/ROADMAP.md) · SOP tim: [docs/OPERASIONA
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (45 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (48 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
 ## Tools MCP (24)
@@ -89,7 +90,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 45 tes
+   pytest                           # opsional: 48 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -126,13 +127,31 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
 
 Claude Code: `claude mcp add google-ads -- /path/ke/AdsAi/.venv/bin/google-ads-mcp`
 
+## Plugin skill (`plugin/`)
+
+Server memberi Claude *tangan* (tools); plugin memberi *cara berpikir*: kontrak keamanan dan alur kerja
+dalam Bahasa Indonesia — pelajaran utama dari Adspirer (lihat [NOTICE](NOTICE) untuk atribusi MIT).
+
+| Isi | Fungsi |
+|---|---|
+| `skills/adsai-agent` | Kontrak keamanan, cara memakai tools, peta tool |
+| `skills/adsai-review` | Review performa & laporan klien (baca-saja) |
+| `skills/adsai-optimasi` | Potong pemborosan, negatif, realokasi, pacing |
+| `commands/audit.md`, `commands/mingguan.md` | Perintah `/audit <klien>` dan `/mingguan <klien>` |
+
+- **Claude Code**: `claude --plugin-dir ./plugin` (atau salin `plugin/skills/*` ke `~/.claude/skills/`).
+- **Claude Desktop / claude.ai**: unggah tiap folder skill (di-zip) lewat pengaturan Skills.
+- Tanpa plugin pun, ringkasan kontrak keamanan sudah tertanam di instruksi server.
+
 ## Pengaman
 
 - `ADSAI_READ_ONLY=true` mematikan semua perubahan.
 - `ADSAI_MAX_DAILY_BUDGET` & `ADSAI_MAX_BUDGET_INCREASE_FACTOR` membatasi perubahan budget;
   budget bersama (shared) ditolak kecuali `allow_shared=true`.
-- Setiap perubahan divalidasi Google (`validate_only`) sebelum dijalankan, dan tercatat di
-  `logs/<customer_id>.jsonl` (operator, waktu, sebelum → sesudah).
+- Setiap perubahan divalidasi Google (`validate_only`) sebelum dijalankan, tercatat di
+  `logs/<customer_id>.jsonl` (operator, waktu, sebelum → sesudah), lalu dibaca ulang dari akun
+  (`terverifikasi`).
+- `update_bid_strategy` memperingatkan bila Target CPA dipasang dengan < 30 konversi/30 hari.
 - Menghapus kampanye/grup iklan permanen sengaja tidak disediakan.
 - Kredensial (`.env`, `client_secret*.json`) dan data klien (`clients.yaml`, `logs/`) di-`.gitignore`.
 
