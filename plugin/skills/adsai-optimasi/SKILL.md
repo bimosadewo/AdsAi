@@ -40,6 +40,22 @@ menyetujui perubahan spesifik itu.
 
 Tidak ada tool hapus permanen. Bila pengguna memintanya, arahkan ke UI dan sebutkan histori yang hilang.
 
+## 3b. Cek pengaturan & targeting (sering jadi sumber bocor terbesar)
+
+Jalankan `campaign_settings` untuk tiap kampanye Search aktif sebelum menyimpulkan kata kunci yang salah:
+
+| Temuan | Tindakan umum (tetap pratinjau & persetujuan) |
+|---|---|
+| Search Partners aktif | Bandingkan performa mitra di UI (segmen Jaringan); bila CPA lebih buruk → `update_campaign_settings search_partners=false` |
+| Perluasan Display aktif di Search | Hampir selalu `display_expansion=false` untuk lead B2B |
+| AI Max aktif & banyak search terms "AI Maksimal" tidak relevan | Tambah negatif dulu; bila tetap boros → `ai_max=false` |
+| Mode lokasi "kehadiran atau minat" | Bisnis lokal/B2B → `location_mode=PRESENCE` |
+| Tanpa target lokasi | `resolve_locations` → `add_location_targets` (area layanan klien) |
+| Lead lewat telepon/WA tapi iklan tayang 24 jam | `set_ad_schedule` sesuai jam CS (mis. hari_kerja 08:00-17:00, sabtu 08:00-12:00) — pertimbangkan dulu: formulir web tetap jalan di luar jam kerja |
+
+**Smart Bidding** (Maks. konversi, Target CPA/ROAS) mengabaikan penyesuaian bid perangkat, jadwal, dan lokasi
+kecuali -100%. Di kampanye Smart Bidding, gunakan jadwal/lokasi untuk *membatasi*, bukan untuk menaik-turunkan bid.
+
 ## 4. Realokasi budget
 
 - Pindahkan ke CPA terbaik, bukan volume terbesar.

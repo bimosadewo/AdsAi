@@ -10,7 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, extensions, gaql, rsa, structure
+from . import analysis, extensions, gaql, rsa, structure, targeting
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
@@ -372,6 +372,95 @@ def update_responsive_search_ad(ad_group_id: str, ad_id: str, customer_id: str |
     a = ads()
     return mutator().update_rsa(a.customer_id(customer_id), ad_group_id, ad_id, confirm, headlines, descriptions,
                                 final_urls, path1, path2)
+
+
+# ---------------------------------------------------------------------------
+# Pengaturan kampanye & targeting
+# ---------------------------------------------------------------------------
+
+def _tg() -> targeting.Targeting:
+    return targeting.Targeting(mutator())
+
+
+@tool
+def campaign_settings(campaign_id: str, customer_id: str | None = None) -> dict:
+    """Pengaturan & targeting kampanye: jaringan (Search Partners, perluasan Display), AI Max, mode lokasi,
+    lokasi (termasuk pengecualian), radius, jadwal iklan, penyesuaian perangkat, bahasa — plus 'temuan' audit
+    (mis. Search Partners/Display aktif, tanpa target lokasi, mode 'kehadiran atau minat', penyesuaian yang
+    diabaikan Smart Bidding). criterion_id dipakai untuk remove_targeting."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    return {"customer_id": cid, **targeting.fetch_settings(a, cid, campaign_id)}
+
+
+@tool
+def resolve_locations(queries: list[str], customer_id: str | None = None, country_code: str | None = "ID",
+                      locale: str = "id") -> dict:
+    """Cari ID lokasi Google (geo_id) dari nama: kota, provinsi, kabupaten, kode pos. Mis. ["Surabaya",
+    "Jawa Timur", "Sidoarjo"]. country_code=null untuk mencari di seluruh dunia. Pilih geo_id yang tepat
+    (perhatikan 'nama' lengkap & 'jenis') lalu pakai di add_location_targets."""
+    return {"hasil": _tg().resolve_locations(queries, country_code, locale)}
+
+
+@write_tool
+def update_campaign_settings(campaign_id: str, customer_id: str | None = None, confirm: bool = False,
+                             search_partners: bool | None = None, display_expansion: bool | None = None,
+                             ai_max: bool | None = None, location_mode: str | None = None) -> dict:
+    """Ubah pengaturan kampanye: search_partners (Google Search Partners), display_expansion (perluasan
+    Display untuk Search), ai_max, location_mode (PRESENCE = orang di lokasi; PRESENCE_OR_INTEREST = juga yang
+    tertarik; SEARCH_INTEREST). Hanya field yang dikirim yang berubah."""
+    a = ads()
+    return _tg().update_settings(a.customer_id(customer_id), campaign_id, confirm, search_partners,
+                                 display_expansion, ai_max, location_mode)
+
+
+@write_tool
+def add_location_targets(campaign_id: str, geo_ids: list[str], customer_id: str | None = None, confirm: bool = False,
+                         exclude: bool = False, bid_pct: float | None = None) -> dict:
+    """Targetkan (atau exclude=true: kecualikan) lokasi berdasarkan geo_id dari resolve_locations.
+    bid_pct: penyesuaian bid lokasi, mis. 20 = +20% (diabaikan Smart Bidding)."""
+    a = ads()
+    return _tg().add_locations(a.customer_id(customer_id), campaign_id, geo_ids, confirm, exclude, bid_pct)
+
+
+@write_tool
+def add_radius_target(campaign_id: str, radius_km: float, customer_id: str | None = None, confirm: bool = False,
+                      latitude: float | None = None, longitude: float | None = None,
+                      street_address: str | None = None, city_name: str | None = None,
+                      province_name: str | None = None, postal_code: str | None = None,
+                      bid_pct: float | None = None) -> dict:
+    """Targetkan radius (1-800 km) di sekitar titik (latitude/longitude) atau alamat (mis. gudang/toko klien)."""
+    a = ads()
+    return _tg().add_proximity(a.customer_id(customer_id), campaign_id, radius_km, confirm, latitude, longitude,
+                               street_address, city_name, province_name, postal_code, "ID", bid_pct)
+
+
+@write_tool
+def remove_targeting(campaign_id: str, criterion_ids: list[str], customer_id: str | None = None,
+                     confirm: bool = False, allow_no_location: bool = False) -> dict:
+    """Hapus target lokasi, radius, atau jendela jadwal (criterion_id dari campaign_settings). Menghapus semua
+    target lokasi (iklan jadi tayang ke seluruh dunia) ditolak kecuali allow_no_location=true."""
+    a = ads()
+    return _tg().remove_criteria(a.customer_id(customer_id), campaign_id, criterion_ids, confirm, allow_no_location)
+
+
+@write_tool
+def set_ad_schedule(campaign_id: str, windows: list[dict], customer_id: str | None = None,
+                    confirm: bool = False) -> dict:
+    """GANTI seluruh jadwal iklan (atomik). windows: [{"day": "hari_kerja", "start": "08:00", "end": "17:00",
+    "bid_pct": 0}]. day: Senin..Minggu, hari_kerja, akhir_pekan, setiap_hari. Menit 00/15/30/45; tidak bisa
+    melewati tengah malam. Iklan HANYA tayang di jendela ini (zona waktu akun)."""
+    a = ads()
+    return _tg().set_schedule(a.customer_id(customer_id), campaign_id, windows, confirm)
+
+
+@write_tool
+def set_device_bid_adjustments(adjustments: dict, customer_id: str | None = None, confirm: bool = False,
+                               campaign_id: str | None = None, ad_group_id: str | None = None) -> dict:
+    """Penyesuaian bid per perangkat dalam persen: {"mobile": 20, "desktop": -30, "tablet": -100}
+    (-100 = matikan). Isi campaign_id ATAU ad_group_id. Smart Bidding mengabaikan nilai selain -100."""
+    a = ads()
+    return _tg().set_devices(a.customer_id(customer_id), confirm, adjustments, campaign_id, ad_group_id)
 
 
 # ---------------------------------------------------------------------------

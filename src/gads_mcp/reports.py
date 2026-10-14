@@ -136,6 +136,13 @@ ACTION_LABEL = {
     "update_call": "Memperbarui nomor telepon iklan",
     "set_extension_status": "Mengubah status ekstensi",
     "remove_extensions": "Melepas ekstensi",
+    "update_campaign_settings": "Mengubah pengaturan kampanye",
+    "add_locations": "Menambah target lokasi",
+    "exclude_locations": "Mengecualikan lokasi",
+    "add_proximity": "Menambah target radius",
+    "remove_targeting": "Menghapus target",
+    "set_ad_schedule": "Mengatur jadwal iklan",
+    "set_device_bid_adjustments": "Mengatur bid per perangkat",
 }
 
 

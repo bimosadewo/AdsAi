@@ -67,6 +67,7 @@ dan jalankan setelah pengguna setuju.
 | Ubah (pratinjau → confirm) | `add_negative_keywords`, `remove_negative_keywords`, `update_budget`, `set_status` (campaign/ad_group/keyword/ad), `update_conversion_action`, `update_bid_strategy`, `add_keywords` |
 | Shared negative list | `list_negative_keyword_lists`, `get_negative_keyword_list`, `create_negative_keyword_list`, `add_negative_keywords_to_list`, `remove_negative_keywords_from_list`, `attach_negative_keyword_list`, `detach_negative_keyword_list` |
 | Iklan RSA | `validate_ad_copy` (tanpa API), `create_responsive_search_ad` (dibuat dijeda), `update_responsive_search_ad` |
+| Pengaturan & targeting | `campaign_settings` (+ temuan), `resolve_locations`, `update_campaign_settings` (Search Partners, perluasan Display, AI Max, mode lokasi), `add_location_targets`, `add_radius_target`, `remove_targeting`, `set_ad_schedule`, `set_device_bid_adjustments` |
 | Ekstensi | `list_extensions`, `add_sitelinks`, `add_callouts`, `add_structured_snippets`, `add_call_extension`, `update_extension`, `set_extension_status`, `remove_extensions` |
 | Riwayat | `change_log` |
 | Klien | `weekly_report` (pratinjau), `send_to_client` (pratinjau → confirm) |

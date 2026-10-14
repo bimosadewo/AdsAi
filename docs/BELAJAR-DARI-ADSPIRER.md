@@ -80,9 +80,10 @@ Web app adspirer.ai ── sambungkan akun iklan, dashboard, monitor server-side
 | **Iklan RSA**: baca/buat/ubah, performa per iklan | ✅ | ✅ (+ `validate_ad_copy` tanpa API, pin, cek superlatif Bahasa Indonesia, dibuat dijeda) | — |
 | **Ekstensi**: sitelink, callout, snippet, call | ✅ | ✅ (+ ubah atomik, alias header Indonesia, nomor Indonesia, dedup lintas format nomor) | — |
 | Keyword research (Keyword Planner) | ✅ | ❌ | Sedang |
-| Jadwal iklan, lokasi, perangkat | ✅ | ❌ | Sedang |
+
 | Buat kampanye Search/PMax/Demand Gen/Video/Display | ✅ | ❌ | Rendah untuk Model A (tim buat di UI) |
 | Analisa anomali & wasted spend | ✅ | ✅ (+ n-gram, perlindungan kata produk) | — |
+| Pengaturan kampanye & targeting (jaringan, AI Max, lokasi, radius, jadwal, perangkat) | ✅ | ✅ (+ ganti jadwal atomik, peringatan Smart Bidding, pengaman lokasi/perangkat) | — |
 | Laporan & alert terjadwal | Email/server-side | ✅ WhatsApp + email, Bahasa Indonesia | — |
 | Multi-platform (Meta, TikTok, LinkedIn, Amazon, ChatGPT) | ✅ | ❌ | Meta = berikutnya (klien FB Ads banyak) |
 
@@ -124,6 +125,22 @@ Dari skema `add_sitelinks`, `add_callout_extensions`, `add_structured_snippets`,
 - Ditemukan & diperbaiki saat membangun: `humanize` menghapus angka 0 di depan nomor telepon
   ('081234…' → 81234…). Konversi angka kini dibatasi ke metrik & field hitungan.
 
+### Putaran 4 (pengaturan kampanye & targeting)
+
+Dari skema `get_campaign_targeting`, `update_campaign`, `update_location_targeting`, `add_campaign_proximity`,
+`resolve_google_locations`, `set_campaign_ad_schedule`, `set_campaign_device_bid_modifiers`,
+`set_ad_group_device_bid_modifiers`:
+- PRESENCE lebih efisien dari default PRESENCE_OR_INTEREST untuk bisnis lokal → diadopsi + jadi temuan audit.
+- Search Partners & perluasan Display default OFF di kampanye baru Adspirer → audit AdsAi menandai bila ON,
+  dan `client_health` kini memberi alert `PENGATURAN_BERISIKO` untuk kampanye Search aktif.
+- Jadwal: begitu ada jendela, iklan hanya tayang di jendela itu. Adspirer hanya *menambah* (menambah jendela
+  sama = error; mengganti harus hapus manual dulu). **AdsAi `set_ad_schedule` mengganti seluruh jadwal secara
+  atomik** + validasi tumpang tindih, menit 00/15/30/45, alias hari Indonesia (hari_kerja, akhir_pekan, …).
+- Perangkat: update-or-create (kriteria perangkat sudah ada otomatis) → diadopsi, kampanye & grup iklan.
+- **Ditambahkan AdsAi (tidak ada di skema Adspirer):** peringatan bahwa Smart Bidding mengabaikan penyesuaian bid
+  perangkat/jadwal/lokasi kecuali -100%; penolakan menghapus semua target lokasi (iklan jadi tayang ke seluruh
+  dunia) dan menolak -100% di semua perangkat.
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
@@ -131,3 +148,4 @@ Dari skema `add_sitelinks`, `add_callout_extensions`, `add_structured_snippets`,
 | 2026-10-14 | Audit konversi, list kampanye & konversi, 2× negatif, 3× ubah kampanye, 6× ubah konversi | Lihat §3 |
 | 2026-10-14 | `search_tools` (gratis) + `get_tool_schema` 12 tool: shared list, struktur, RSA, performa iklan | Lihat §5 putaran 2 — tidak memakai kuota |
 | 2026-10-14 | `get_tool_schema` 8 tool ekstensi + skill `extensions.md` | Lihat §5 putaran 3 — tidak memakai kuota |
+| 2026-10-14 | `get_tool_schema` 7 tool targeting | Lihat §5 putaran 4 — tidak memakai kuota |

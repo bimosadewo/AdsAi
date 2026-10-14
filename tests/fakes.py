@@ -12,11 +12,17 @@ from gads_mcp.config import Safety, Settings
 
 
 class FakeService:
-    def __init__(self, real, calls: list):
+    def __init__(self, real, calls: list, extras: dict | None = None):
         self._real = real
         self._calls = calls
+        self._extras = extras or {}
 
     def __getattr__(self, name):
+        if name in self._extras:
+            def extra(request):
+                self._calls.append((name, request))
+                return self._extras[name]
+            return extra
         if name == "mutate":
             def mutate_all(request):
                 self._calls.append((name, request))
@@ -45,8 +51,9 @@ class FakeAds:
         self.settings = Settings("t", "c", "s", "r", "", "1234567890", safety or Safety())
         self.client = GoogleAdsClient(credentials=AnonymousCredentials(), developer_token="t", use_proto_plus=True)
         self.calls: list = []
+        self.extras: dict = {}
         real_get_service = self.client.get_service
-        self.client.get_service = lambda name, **kw: FakeService(real_get_service(name), self.calls)
+        self.client.get_service = lambda name, **kw: FakeService(real_get_service(name), self.calls, self.extras)
         self._search = search or (lambda cid, q: [])
         self.queries: list[str] = []
 

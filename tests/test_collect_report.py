@@ -43,6 +43,9 @@ class FakeSearch:
             return [{"campaign.id": "1", "campaign.name": "Lead-Search"},
                     {"campaign.id": "3", "campaign.name": "Geotextile Lama",
                      "campaign.primary_status_reasons": ["BUDGET_CONSTRAINED"]}]
+        if "network_settings.target_search_network" in q:
+            return [{"campaign.name": "Lead-Search", "campaign.network_settings.target_search_network": True,
+                     "campaign.geo_target_type_setting.positive_geo_target_type": "PRESENCE_OR_INTEREST"}]
         if "approval_status = 'DISAPPROVED'" in q:
             return [{"campaign.name": "Lead-Search", "ad_group.name": "Geotextile", "ad_group_ad.ad.id": "9"}]
         if "FROM conversion_action" in q:
@@ -76,7 +79,9 @@ def test_snapshot_alerts_and_report(tmp_path):
     alerts = evaluate_alerts(snap, CLIENT)
     codes = {a.kode for a in alerts}
     assert {"TIDAK_TAYANG", "KONVERSI_NOL", "CPA_NAIK", "KONVERSI_UTAMA_BERLEBIH", "IMPOR_GAGAL",
-            "IKLAN_DITOLAK"} <= codes
+            "IKLAN_DITOLAK", "PENGATURAN_BERISIKO"} <= codes
+    assert snap["pengaturan_berisiko"] == [{"kampanye": "Lead-Search",
+                                            "masalah": ["Search Partners", "lokasi 'kehadiran atau minat'"]}]
 
     audit = AuditLog(tmp_path)
     audit.write(CLIENT.customer_id, "update_budget", {"kampanye": "Lead-Search"},

@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (75 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (85 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (44)
+## Tools MCP (52)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -62,6 +62,18 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `validate_ad_copy` | Cek teks RSA tanpa API: panjang, jumlah, tanda seru, kapital, duplikat, pin, klaim superlatif |
 | `create_responsive_search_ad` | Buat RSA (default **dijeda**) |
 | `update_responsive_search_ad` | Ubah headline/deskripsi/URL/path RSA |
+
+**Pengaturan kampanye & targeting**
+| Tool | Fungsi |
+|---|---|
+| `campaign_settings` | Jaringan, AI Max, mode lokasi, lokasi/radius, jadwal, perangkat, bahasa + **temuan audit** |
+| `update_campaign_settings` | Search Partners, perluasan Display, AI Max, mode lokasi (PRESENCE / PRESENCE_OR_INTEREST) |
+| `resolve_locations` | Nama kota/provinsi/kode pos → geo_id Google |
+| `add_location_targets` | Targetkan atau kecualikan lokasi (± penyesuaian bid) |
+| `add_radius_target` | Radius 1-800 km di sekitar koordinat/alamat |
+| `remove_targeting` | Hapus lokasi/radius/jadwal (menghapus semua lokasi → ditolak tanpa izin eksplisit) |
+| `set_ad_schedule` | Ganti seluruh jadwal iklan secara atomik (hari_kerja, akhir_pekan, jam & menit) |
+| `set_device_bid_adjustments` | Bid per perangkat (kampanye atau grup iklan); -100% semua perangkat ditolak |
 
 **Ekstensi**
 | Tool | Fungsi |
@@ -115,7 +127,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 75 tes
+   pytest                           # opsional: 85 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -196,9 +208,10 @@ src/gads_mcp/
   structure.py  struktur kampanye + audit struktur
   rsa.py        validasi teks Responsive Search Ad
   extensions.py ekstensi: validasi + tambah/ubah/jeda/lepas (atomik)
+  targeting.py  pengaturan kampanye & targeting + audit
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     44 tools MCP
+  server.py     52 tools MCP
   cli.py        perintah `adsai`
 ```

@@ -63,7 +63,9 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | ✅ Selesai | `campaign_structure` + audit struktur |
 | ✅ Selesai | Iklan RSA: validasi, buat (dijeda), ubah, performa per iklan, status per iklan |
 | ✅ Selesai | Ekstensi: sitelink, callout, snippet, telepon — tambah, ubah (atomik), jeda, lepas (8 tools) |
-| Sedang | Keyword research (Keyword Planner), jadwal iklan, lokasi, perangkat |
+| ✅ Selesai | Pengaturan kampanye & targeting: jaringan, AI Max, mode lokasi, lokasi/radius, jadwal, perangkat (8 tools) |
+| Sedang | Keyword research (Keyword Planner) |
+| Sedang | Performance Max: asset group, search themes, sinyal audiens, search terms PMax |
 | Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
 | Rendah | Membuat kampanye baru (Model A: tim membuat di UI) |
 

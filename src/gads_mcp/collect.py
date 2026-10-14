@@ -49,6 +49,10 @@ Q_ENABLED = ("SELECT campaign.id, campaign.name, campaign.primary_status, campai
 Q_DISAPPROVED = ("SELECT campaign.name, ad_group.name, ad_group_ad.ad.id FROM ad_group_ad "
                  "WHERE campaign.status = 'ENABLED' AND ad_group.status = 'ENABLED' "
                  "AND ad_group_ad.status = 'ENABLED' AND ad_group_ad.policy_summary.approval_status = 'DISAPPROVED'")
+Q_SETTINGS = ("SELECT campaign.name, campaign.advertising_channel_type, "
+              "campaign.network_settings.target_search_network, campaign.network_settings.target_content_network, "
+              "campaign.geo_target_type_setting.positive_geo_target_type FROM campaign "
+              "WHERE campaign.status = 'ENABLED' AND campaign.advertising_channel_type = 'SEARCH'")
 Q_NEGATIVES = ("SELECT campaign_criterion.keyword.text FROM campaign_criterion "
                "WHERE campaign_criterion.negative = TRUE AND campaign_criterion.type = 'KEYWORD' "
                "AND campaign.status != 'REMOVED'")
@@ -95,6 +99,18 @@ def collect_snapshot(ads: Searcher, client: Any, today: date | None = None,
         for r in ads.search(cid, Q_DISAPPROVED)
     ]
 
+    risky_settings = []
+    for r in ads.search(cid, Q_SETTINGS):
+        issues = []
+        if r.get("campaign.network_settings.target_search_network"):
+            issues.append("Search Partners")
+        if r.get("campaign.network_settings.target_content_network"):
+            issues.append("perluasan Display")
+        if r.get("campaign.geo_target_type_setting.positive_geo_target_type") == "PRESENCE_OR_INTEREST":
+            issues.append("lokasi 'kehadiran atau minat'")
+        if issues:
+            risky_settings.append({"kampanye": r.get("campaign.name"), "masalah": issues})
+
     conv = ads.search(cid, gaql.q_conversion_actions())
     n_primary = sum(1 for r in conv if r.get("conversion_action.primary_for_goal"))
 
@@ -128,6 +144,7 @@ def collect_snapshot(ads: Searcher, client: Any, today: date | None = None,
         "kampanye_aktif_tidak_tayang": not_serving,
         "jumlah_konversi_utama": n_primary,
         "iklan_ditolak": disapproved,
+        "pengaturan_berisiko": risky_settings,
         "impor_offline_bermasalah": upload_issues,
         "pacing": pacing,
     }
