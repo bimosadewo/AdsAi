@@ -9,14 +9,17 @@ Claude Desktop ──MCP (stdio)──► AdsAi (server ini) ──► Google Ad
 
 ## Status
 
+Model bisnis: **layanan terkelola** — tim agensi memakai AdsAi, klien menerima laporan & alert.
+Rencana lengkap: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 | Fase | Isi | Status |
 |---|---|---|
 | 0 | Akses & kredensial (MCC, developer token, OAuth) | 📋 Panduan: [docs/FASE-0-AKSES.md](docs/FASE-0-AKSES.md) |
 | 1 | MVP baca-saja (8 tools) | ✅ Selesai |
 | 2 | Tools tulis + pengaman (validate_only, batas budget, log) | ⏳ Berikutnya |
-| 3 | Analisa pintar (wasted spend, n-gram, anomali) | ⏳ |
-| 4 | Deploy online + login multi-user (custom connector claude.ai) | ⏳ |
-| 5 | Otomasi laporan & alert dengan Claude API | ⏳ |
+| 3 | Daftar klien, laporan mingguan & alert WA | ⏳ |
+| 4 | Analisa lanjutan (n-gram, anomali, pacing) | ⏳ |
+| 5 | SaaS (klien login sendiri) | 🅿️ Ditunda |
 
 ## Tools (Fase 1 — semuanya baca-saja)
 
