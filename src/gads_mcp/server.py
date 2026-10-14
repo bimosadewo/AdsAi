@@ -10,13 +10,13 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, extensions, gaql, rsa, structure, targeting
+from . import analysis, diagnostics, dossier, errors, extensions, gaql, rsa, strategy, structure, targeting
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
 from .config import load_settings
 from .mutations import Mutator
-from .safety import AuditLog
+from .safety import AuditLog, FailureLog
 from .service import Context, alerts_message, build_dossier, build_weekly_report, send_message
 
 INSTRUCTIONS = """\
@@ -29,7 +29,12 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
   mengubah apa pun) -> tunjukkan rencana ke pengguna -> confirm=true hanya setelah pengguna jelas
   setuju. Setelah itu laporkan isi 'terverifikasi' (kondisi akun yang dibaca ulang).
 - send_to_client mengirim pesan ke klien: pratinjau dulu, kirim hanya setelah disetujui.
-- Jangan mengarang angka; bila tool gagal, sebutkan error-nya.
+- Mulai sesi per klien dengan suggest_next_action dan baca client_strategy: arahan AVOID/PREFER/
+  CONSTRAINT/REQUIRE wajib dihormati; simpan keputusan baru (add_strategy_directive) hanya bila pengguna
+  memutuskannya secara eksplisit.
+- Jangan mengarang angka; bila tool gagal, baca 'Saran' di pesannya atau panggil why_did_this_fail —
+  jangan mengulang dengan argumen tebakan. Setelah timeout, baca kondisi terkini dulu.
+- "Jeda/hentikan" = set_status PAUSED, bukan remove_*. Menghapus butuh confirm_delete=true.
 - Untuk kebutuhan yang tidak tercakup tool lain, pakai run_query dengan GAQL.
 """
 
@@ -48,9 +53,21 @@ def _register(fn: Callable, annotations: ToolAnnotations) -> Callable:
         try:
             return fn(*args, **kwargs)
         except (AdsError, ValueError, RuntimeError) as ex:
+            _record_failure(fn.__name__, kwargs, ex)
             raise ToolError(str(ex)) from ex
 
     return mcp.tool(annotations=annotations)(wrapper)
+
+
+def _failures() -> FailureLog:
+    return FailureLog(ads().settings.safety.audit_log_dir)
+
+
+def _record_failure(name: str, kwargs: dict, ex: Exception) -> None:
+    try:
+        _failures().write(name, kwargs, str(ex), getattr(ex, "codes", None))
+    except Exception:  # noqa: BLE001 — mis. .env belum ada; error asli tetap dilaporkan
+        pass
 
 
 def tool(fn: Callable) -> Callable:
@@ -261,7 +278,7 @@ def set_status(level: str, ids: list[str], status: str, customer_id: str | None 
                confirm: bool = False) -> dict:
     """Jeda/aktifkan. level: campaign | ad_group | keyword | ad. status: ENABLED | PAUSED.
     keyword: id 'ad_group_id~criterion_id'; ad: id 'ad_group_id~ad_id' (lihat campaign_structure).
-    Menghapus permanen tidak didukung."""
+    Untuk menghapus kata kunci permanen pakai remove_keywords."""
     a = ads()
     return mutator().set_status(a.customer_id(customer_id), level, ids, status, confirm)
 
@@ -692,10 +709,11 @@ def weekly_report(client: str, fmt: str = "whatsapp") -> dict:
 
 @tool
 def client_dossier(client: str, write: bool = True) -> dict:
-    """Buat/perbarui kit dossier klien untuk agen AI: SKILL.md (profil akun, target, kampanye aktif, konversi,
-    pola search terms, temuan, aturan main), PROMPTBOOK.md (prompt Pemula→Ahli), AGENT_INSTRUCTIONS.md (siap
-    tempel ke Claude/ChatGPT Project), AGENTS.md (Claude Code/Cursor). Data 90 hari terakhir. Tidak mengubah akun;
-    write=true menyimpan ke folder dossiers/<klien>/. Kontak klien tidak dimasukkan."""
+    """Buat/perbarui kit dossier klien untuk agen AI (format Agent Skills): SKILL.md (doktrin: jenis akun,
+    prioritas, arahan strategi, aturan main), AGENTS.md (instruksi agen; juga untuk kolom instruksi Project),
+    PROMPTBOOK.md (menu prompt), README.md (cara pasang), references/account-profile.md (angka, kampanye,
+    konversi, search terms, temuan) dan references/working-with-adsai.md (kontrak tool). Data 90 hari terakhir.
+    Tidak mengubah akun; write=true menyimpan ke folder dossiers/<klien>/. Kontak klien tidak dimasukkan."""
     c = ctx()
     return build_dossier(c, c.client(client), write=write)
 
@@ -755,9 +773,12 @@ def suggest_negative_keywords(client: str | None = None, customer_id: str | None
         "SELECT campaign_criterion.keyword.text FROM campaign_criterion WHERE campaign_criterion.negative = TRUE "
         "AND campaign_criterion.type = 'KEYWORD'" + (f" AND campaign.id = {int(campaign_id)}" if campaign_id else "")))]
     threshold = min_cost if min_cost is not None else (cl.thresholds.min_waste_cost if cl else 20_000)
-    sugg = analysis.suggest_negatives(rows, threshold, cl.protected_terms if cl else (), existing)
+    directives = strategy.load(cl.key)["arahan"] if cl else []
+    protected = tuple(cl.protected_terms if cl else ()) + tuple(strategy.protected_terms(directives))
+    sugg = analysis.suggest_negatives(rows, threshold, protected, existing)
     return {"customer_id": cid, "ambang_biaya": threshold, "jumlah_usulan": len(sugg),
             "potensi_hemat": round(sum(s["biaya"] for s in sugg), 2), "usulan": sugg,
+            "penyimpangan_strategi": strategy.drift(rows, directives) or None,
             "catatan": None if cl else "Tanpa clients.yaml, kata produk klien tidak terlindungi — periksa usulan dengan teliti."}
 
 
@@ -788,6 +809,115 @@ def budget_pacing(client: str | None = None, customer_id: str | None = None,
     mtd = sum(r["cost"] for r in daily_rows(ads().search(cid, q_daily(t.replace(day=1).isoformat(),
                                                                 (t - timedelta(days=1)).isoformat()))))
     return {"customer_id": cid, **analysis.budget_pacing(mtd, budget, t)}
+
+
+
+# ---------------------------------------------------------------------------
+# Kata kunci: bid & hapus
+# ---------------------------------------------------------------------------
+
+@write_tool
+def update_keyword_bids(bids: list[dict], customer_id: str | None = None, confirm: bool = False) -> dict:
+    """Ubah bid CPC maksimum kata kunci (rupiah). bids: [{"id": "ad_group_id~criterion_id", "cpc_bid": 5000}].
+    Kenaikan maks 2× per perubahan. Hanya berpengaruh di kampanye Manual CPC — di Smart Bidding Google
+    mengabaikannya (pratinjau memberi catatan)."""
+    a = ads()
+    return mutator().update_keyword_bids(a.customer_id(customer_id), bids, confirm)
+
+
+@write_tool
+def remove_keywords(ids: list[str], customer_id: str | None = None, confirm: bool = False,
+                    confirm_delete: bool = False) -> dict:
+    """HAPUS PERMANEN kata kunci (id 'ad_group_id~criterion_id'). Bila maksud pengguna 'hentikan/jeda',
+    pakai set_status level keyword PAUSED — jangan tool ini. Eksekusi butuh confirm=true DAN confirm_delete=true."""
+    a = ads()
+    return mutator().remove_keywords(a.customer_id(customer_id), ids, confirm, confirm_delete)
+
+
+# ---------------------------------------------------------------------------
+# Diagnosis (hanya baca)
+# ---------------------------------------------------------------------------
+
+@tool
+def suggest_next_action(client: str) -> dict:
+    """Mulai di sini untuk satu klien: urutan langkah paling bernilai sekarang (alert KRITIS → penyimpangan
+    strategi → peringatan → rutin sesuai jenis akun), masing-masing dengan tool yang dipakai. Tidak mengubah apa pun."""
+    c = ctx()
+    cl = c.client(client)
+    snap = collect_snapshot(c.ads, cl)
+    alerts = analysis.evaluate_alerts(snap, cl)
+    total = gaql.summarize(c.ads.search(cl.customer_id, gaql.q_campaign_performance(
+        dossier.period(today_local())[2])))
+    kind = dossier.classify_account(snap, total)
+    directives = strategy.load(cl.key)["arahan"]
+    drift = strategy.drift(snap.get("istilah_minggu_ini") or [], directives)
+    return {"klien": cl.name, "customer_id": cl.customer_id, "jenis_akun": kind["jenis"], "alasan": kind["alasan"],
+            "langkah": diagnostics.next_actions(alerts, kind["jenis"], drift),
+            "arahan_strategi": len(directives)}
+
+
+@tool
+def verify_campaign_is_live(campaign_id: str, customer_id: str | None = None) -> dict:
+    """Cek langsung ke Google apakah kampanye benar-benar bisa tayang: status, budget > 0, status utama Google
+    (+alasannya), grup iklan aktif, iklan aktif yang tidak ditolak, kata kunci aktif (Search), tayangan kemarin.
+    Pakai setelah mengaktifkan kampanye atau saat klien bilang iklannya tidak muncul."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    camp = str(int(str(campaign_id).strip()))
+    data = {k: a.search(cid, q) for k, q in diagnostics.live_queries(camp).items()}
+    return {"customer_id": cid, **diagnostics.assess_live(data)}
+
+
+@tool
+def why_did_this_fail(limit: int = 5, tool_name: str | None = None, customer_id: str | None = None) -> dict:
+    """Kegagalan tool terakhir dengan error asli Google, kodenya, dan saran perbaikan. Pakai sebelum mencoba ulang
+    — jangan mengulang dengan argumen tebakan. Membedakan masalah login Google Ads dari error permintaan."""
+    entries = _failures().read(max(1, min(limit, 50)), tool_name, customer_id)
+    return diagnostics.why_failed(entries)
+
+
+@tool
+def explain_error(message: str) -> dict:
+    """Terjemahkan pesan error Google Ads mentah (dari tool, UI, atau log) menjadi sebab & langkah perbaikan."""
+    return errors.explain(message)
+
+
+# ---------------------------------------------------------------------------
+# Strategi klien (strategi/<klien>.md)
+# ---------------------------------------------------------------------------
+
+@tool
+def client_strategy(client: str) -> dict:
+    """Arahan strategi klien yang sudah disepakati (AVOID / PREFER / CONSTRAINT / REQUIRE + alasan) dan log
+    keputusan. Baca ini sebelum mengusulkan perubahan; jangan melanggar arahan tanpa membahasnya dengan pengguna.
+    Bila data baru bertentangan dengan arahan, sampaikan dan tanyakan — jangan diam-diam diabaikan."""
+    cl = ctx().client(client)
+    data = strategy.load(cl.key)
+    return {"klien": cl.name, "berkas": data["berkas"], "ada": data["ada"],
+            "arahan": [d.to_dict() for d in data["arahan"]], "keputusan": data["keputusan"][:20]}
+
+
+@write_tool
+def add_strategy_directive(client: str, kind: str, text: str, reason: str, section: str = "Google Ads",
+                           topic: str | None = None, confirm: bool = False) -> dict:
+    """Simpan keputusan tim/klien sebagai arahan strategi. kind: AVOID | PREFER | CONSTRAINT | REQUIRE.
+    Tulis istilah pencarian dalam tanda kutip (mis. text='"gratis"') agar dipakai mesin: istilah PREFER dilindungi
+    dari usulan negatif, istilah AVOID yang masih memakan biaya dilaporkan sebagai penyimpangan.
+    HANYA setelah pengguna eksplisit memutuskan — jangan simpan hasil eksplorasi atau dugaan.
+    Tidak mengubah akun Google Ads; menulis ke strategi/<klien>.md beserta Decision Log bertanggal."""
+    cl = ctx().client(client)
+    d = strategy.build_directive(kind, text, reason, section)
+    path = strategy.path_for(cl.key)
+    current = path.read_text(encoding="utf-8") if path.exists() else strategy.template(cl.name)
+    if any(x.line() == d.line() for x in strategy.parse(current)["arahan"]):
+        return {"status": "TIDAK_BERUBAH", "klien": cl.name, "arahan": d.line()[2:], "pesan": "Arahan ini sudah ada."}
+    if not confirm:
+        return {"status": "PRATINJAU", "klien": cl.name, "berkas": str(path), "arahan": d.line()[2:],
+                "bagian": d.bagian, "pesan": "Belum disimpan. Konfirmasi ke pengguna, lalu panggil lagi dengan confirm=true."}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(strategy.add_directive(current, d, topic or d.teks[:40], today_local()), encoding="utf-8")
+    return {"status": "DISIMPAN", "klien": cl.name, "berkas": str(path), "arahan": d.line()[2:],
+            "terverifikasi": [x.to_dict() for x in strategy.load(cl.key)["arahan"]]}
 
 
 def main() -> None:

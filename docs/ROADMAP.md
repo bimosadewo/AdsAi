@@ -65,10 +65,17 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | ✅ Selesai | Ekstensi: sitelink, callout, snippet, telepon — tambah, ubah (atomik), jeda, lepas (8 tools) |
 | ✅ Selesai | Pengaturan kampanye & targeting: jaringan, AI Max, mode lokasi, lokasi/radius, jadwal, perangkat (8 tools) |
 | ✅ Selesai | Kit dossier klien untuk agen AI (setara "Expert Space" Adspirer) |
-| Sedang | Keyword research (Keyword Planner) |
+| ✅ Selesai | Diagnosis: `suggest_next_action`, `verify_campaign_is_live`, `why_did_this_fail`, `explain_error`; penerjemah error + coba ulang otomatis |
+| ✅ Selesai | Strategi klien (AVOID/PREFER/CONSTRAINT/REQUIRE + Decision Log) terhubung ke usulan negatif & dossier |
+| ✅ Selesai | Bid kata kunci & hapus kata kunci (gerbang `confirm_delete`) |
+| Tinggi | Keyword research (KeywordPlanIdeaService, geo Indonesia 2360 + bahasa id): niat via persentil CPC (≥P75 / P25–P75 / <P25), buang frasa sampah, fallback 20 teratas berlabel volume rendah, 3 tingkat budget Rp |
+| Tinggi | Monitor + antrean persetujuan: aturan per klien (`consecutive_days`, uji kering), usulan tindakan kedaluwarsa 48 jam, mode *shadow*, maks ±20% per putaran |
+| Sedang | Ekstensi tingkat akun (selain kampanye & grup iklan) + cegah aset telepon ganda |
+| Sedang | Deteksi kampanye broad-only (AI Max) sebelum menambah EXACT/PHRASE; deteksi strategi bidding portofolio |
+| Sedang | Audit tracking konversi dengan skor 0–100 & nilai A–F (yang tidak terbaca = "Tidak lengkap", bukan lulus) |
 | Sedang | Performance Max: asset group, search themes, sinyal audiens, search terms PMax |
 | Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
-| Rendah | Membuat kampanye baru (Model A: tim membuat di UI) |
+| Rendah | Membuat kampanye Search baru (dibuat dijeda, gerbang riset + validasi; Model A: tim membuat di UI) |
 
 ## Ide paket jasa (untuk divalidasi ke klien)
 | Paket | Isi |

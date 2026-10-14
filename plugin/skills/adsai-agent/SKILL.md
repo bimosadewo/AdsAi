@@ -20,11 +20,18 @@ dan jalankan setelah pengguna setuju.
 3. **Baca dulu sebelum menulis.** Lihat performa, struktur, search terms sebelum mengusulkan perubahan.
 4. **Verifikasi setelah menulis.** Laporkan isi `terverifikasi` dari hasil tool — yang benar-benar
    ada di akun, bukan yang diminta.
-5. **Jangan mengarang angka.** Tool gagal = sebutkan tool dan pesan error-nya. Jangan menebak metrik.
+5. **Jangan mengarang angka.** Tool gagal = sebutkan tool dan pesan error-nya, ikuti `Saran:` di pesan itu
+   atau panggil `why_did_this_fail`. Jangan mengulang dengan argumen tebakan; setelah timeout, baca
+   kondisi terkini dulu (perubahan mungkin sudah terjadi).
 6. **Kirim ke klien = keluar dari agensi.** `send_to_client` hanya setelah pengguna membaca isi pesan
    dan penerimanya.
 7. **Hormati pengaman.** Bila tool menolak karena `ADSAI_READ_ONLY`, batas budget, atau shared budget,
    jelaskan alasannya — jangan mencari jalan memutar.
+8. **Jeda, jangan hapus.** "Hentikan/matikan" = `set_status` PAUSED. `remove_keywords` hanya bila pengguna
+   jelas meminta penghapusan permanen, dan butuh `confirm_delete=true`.
+9. **Hormati strategi klien.** Baca `client_strategy` di awal sesi. Arahan AVOID/PREFER/CONSTRAINT/REQUIRE
+   tidak dilanggar diam-diam; bila data baru bertentangan, sampaikan dan tanyakan. Simpan arahan baru
+   (`add_strategy_directive`) hanya untuk keputusan eksplisit — bukan hasil eksplorasi atau dugaan.
 
 ## Cara bekerja
 
@@ -52,7 +59,8 @@ dan jalankan setelah pengguna setuju.
 | Tahu kondisi akun, laporan, scorecard, cek tracking | `adsai-review` |
 | Memangkas pemborosan, negative keyword, realokasi, pacing | `adsai-optimasi` |
 | Menulis/memperbaiki iklan RSA & ekstensi, ad strength, iklan ditolak | `adsai-iklan` |
-| Mulai/tidak tahu harus apa | `list_clients` lalu `client_health` |
+| Mulai/tidak tahu harus apa | `list_clients` → `suggest_next_action <klien>` |
+| Iklan tidak muncul / tool gagal | `verify_campaign_is_live`, `why_did_this_fail`, `explain_error` |
 
 ## Peta tool server `google-ads`
 
@@ -64,7 +72,9 @@ dan jalankan setelah pengguna setuju.
 | Struktur | `campaign_structure` (grup iklan, kata kunci, iklan, ekstensi, negatif + temuan audit) |
 | Tracking | `conversion_actions` |
 | Analisa | `ngram_analysis`, `suggest_negative_keywords`, `detect_anomalies`, `budget_pacing` |
-| Ubah (pratinjau → confirm) | `add_negative_keywords`, `remove_negative_keywords`, `update_budget`, `set_status` (campaign/ad_group/keyword/ad), `update_conversion_action`, `update_bid_strategy`, `add_keywords` |
+| Ubah (pratinjau → confirm) | `add_negative_keywords`, `remove_negative_keywords`, `update_budget`, `set_status` (campaign/ad_group/keyword/ad), `update_conversion_action`, `update_bid_strategy`, `add_keywords`, `update_keyword_bids`, `remove_keywords` (+`confirm_delete`) |
+| Diagnosis | `suggest_next_action`, `verify_campaign_is_live`, `why_did_this_fail`, `explain_error` |
+| Strategi klien | `client_strategy`, `add_strategy_directive` |
 | Shared negative list | `list_negative_keyword_lists`, `get_negative_keyword_list`, `create_negative_keyword_list`, `add_negative_keywords_to_list`, `remove_negative_keywords_from_list`, `attach_negative_keyword_list`, `detach_negative_keyword_list` |
 | Iklan RSA | `validate_ad_copy` (tanpa API), `create_responsive_search_ad` (dibuat dijeda), `update_responsive_search_ad` |
 | Pengaturan & targeting | `campaign_settings` (+ temuan), `resolve_locations`, `update_campaign_settings` (Search Partners, perluasan Display, AI Max, mode lokasi), `add_location_targets`, `add_radius_target`, `remove_targeting`, `set_ad_schedule`, `set_device_bid_adjustments` |

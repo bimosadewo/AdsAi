@@ -96,3 +96,53 @@ class AuditLog:
                 continue
             entries.append(entry)
         return entries[-limit:][::-1]
+
+
+class FailureLog:
+    """Panggilan tool yang gagal (logs/_gagal.jsonl) — bahan `why_did_this_fail`.
+
+    Agen sering hanya melihat ringkasan error atau sesi sudah berganti; log ini menyimpan error asli Google
+    beserta kodenya agar penyebab bisa dibaca ulang, bukan ditebak. Tidak menyimpan kredensial.
+    """
+
+    MAX_LINES = 500
+
+    def __init__(self, directory: Path):
+        self.path = Path(directory) / "_gagal.jsonl"
+
+    def write(self, tool: str, arguments: dict[str, Any], message: str, codes: list[str] | None = None) -> None:
+        args = {k: v for k, v in arguments.items() if k != "confirm"}
+        entry = {
+            "waktu": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "tool": tool,
+            "customer_id": arguments.get("customer_id"),
+            "klien": arguments.get("client"),
+            "confirm": bool(arguments.get("confirm")),
+            "argumen": json.dumps(args, ensure_ascii=False, default=str)[:600],
+            "kode": codes or [],
+            "pesan": message[:1500],
+        }
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            lines = self.path.read_text(encoding="utf-8").splitlines() if self.path.exists() else []
+            lines = (lines + [json.dumps(entry, ensure_ascii=False)])[-self.MAX_LINES:]
+            self.path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except OSError:
+            pass  # pencatatan kegagalan tidak boleh menutupi error aslinya
+
+    def read(self, limit: int = 10, tool: str | None = None, customer_id: str | None = None) -> list[dict[str, Any]]:
+        if not self.path.exists():
+            return []
+        out = []
+        for line in reversed(self.path.read_text(encoding="utf-8").splitlines()):
+            if not line.strip():
+                continue
+            e = json.loads(line)
+            if tool and e.get("tool") != tool:
+                continue
+            if customer_id and e.get("customer_id") not in (customer_id, None):
+                continue
+            out.append(e)
+            if len(out) >= limit:
+                break
+        return out

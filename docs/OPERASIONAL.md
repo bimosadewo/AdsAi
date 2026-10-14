@@ -10,8 +10,12 @@
 5. Di Claude: *"client_health untuk <klien>"* → audit awal. Biasanya temuan pertama:
    konversi Utama terlalu banyak, kampanye tidak tayang, search terms boros.
 6. Kontrak jasa: pastikan ada klausul izin akses akun iklan & penggunaan data (UU PDP).
-7. `adsai dossier --client <klien>` → buat Claude Project per klien: tempel `AGENT_INSTRUCTIONS.md` ke
-   Project instructions dan unggah `SKILL.md` + `PROMPTBOOK.md` sebagai pengetahuan project.
+7. Catat keputusan awal dengan klien sebagai arahan strategi (di Claude: *"simpan arahan AVOID "gratis"
+   untuk <klien>, alasannya …"* → `add_strategy_directive`, pratinjau → confirm). Tersimpan di
+   `strategi/<klien>.md` dan dibaca agen di setiap sesi.
+8. `adsai dossier --client <klien>` → buat Claude Project per klien: tempel `AGENTS.md` ke
+   *Project instructions*, unggah `references/account-profile.md` + `PROMPTBOOK.md` sebagai pengetahuan
+   project (instruksi = AGENTS.md, pengetahuan = profil — jangan dibalik). Lihat `README.md` di kit.
 
 ## Rutinitas
 
@@ -19,7 +23,7 @@
 |---|---|---|
 | Setiap hari 08:00 | Otomatis | `adsai alerts --send --critical-only` → WA ke klien hanya bila KRITIS |
 | Setiap hari 08:00 | Otomatis | `adsai alerts` → hasil ke tim (lihat log / email internal) |
-| Senin pagi | Tim | Di Claude: `client_health` semua klien → tangani alert |
+| Senin pagi | Tim | Di Claude: `client_health` semua klien → per klien `suggest_next_action` → tangani urutannya |
 | Senin | Tim | `suggest_negative_keywords` per klien → review → `add_negative_keywords` (pratinjau → confirm) |
 | Senin | Tim | `budget_pacing` → sesuaikan budget bila BOROS/KURANG (`update_budget`) |
 | Senin 10:00 | Otomatis | `adsai report --send` → laporan mingguan ke semua klien aktif |
@@ -58,9 +62,17 @@ cek kualitasnya, baru ganti ke `fonnte` / `webhook`.
 - Uji ke nomor sendiri dulu: buat klien uji di `clients.yaml` dengan nomor tim, lalu
   `adsai report --client uji --send`.
 
+## Bila ada yang gagal
+
+- Tool menolak → baca bagian `Saran:` di pesannya. Masih bingung → *"why_did_this_fail"* (error asli + kode).
+- Klien bilang iklan tidak muncul → `verify_campaign_is_live` untuk kampanye itu.
+- Masalah login (OAuth/refresh token) bukan masalah koneksi Claude — perbaiki `.env`, jangan pasang ulang konektor.
+
 ## Aturan emas perubahan akun
 
 1. Selalu pratinjau (`confirm=false`) dan baca rencananya sebelum `confirm=true`.
 2. Jangan ubah strategi bidding/konversi lebih dari sekali per 2 minggu per kampanye (fase belajar).
 3. Budget naik bertahap (maks 2× per perubahan — dijaga otomatis).
-4. Usulan negatif: periksa kata produk klien; tambahkan ke `protected_terms` bila ada yang keliru.
+4. Usulan negatif: periksa kata produk klien; tambahkan ke `protected_terms` bila ada yang keliru
+   (atau arahan `PREFER: "…"` di strategi klien).
+5. "Jeda" bukan "hapus". Hapus kata kunci hanya bila benar-benar diminta (`confirm_delete=true`).

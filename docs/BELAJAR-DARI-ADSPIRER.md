@@ -177,6 +177,62 @@ Sumber: developer.adspirer.com/introduction, adspirer.com/docs/introduction, ads
 adspirer.com/docs/knowledge-base/mcp-server-comparison, adspirer.com/privacy,
 adspirer.com/blog/automation-platform-for-agencies.
 
+### Putaran 7 (seluruh dokumentasi adspirer.com + developer.adspirer.com, dibaca langsung)
+
+Dibaca: ±100 halaman panduan/knowledge base/agent skills/platform, 178 halaman referensi API, dan changelog
+(Sep 2025 – Okt 2026, ±110 entri). Semua klaim dari vendor; dokumen mereka sendiri kadang bertentangan
+(mis. umur token 1 jam vs 7 hari; "tidak bisa mengubah budget" padahal ada `update_campaign`).
+
+**Fakta penting**
+- 178 tool di referensi API (Google 51 · LinkedIn 45 · Meta 36 · TikTok 29 · monitoring 13 · umum 3 · audit 1);
+  halaman lain menyebut 400+ tool / 156 Google. Tool tulis **tidak punya flag confirm/dry-run** — keamanan
+  hanya lewat teks deskripsi ("Confirm with user BEFORE"), `confirm_delete` untuk hapus, dan antrean persetujuan
+  (`manage_action`, kedaluwarsa 48 jam). Pola AdsAi (pratinjau tervalidasi Google → confirm) lebih ketat.
+- 9 tool diagnosis gratis: `start_here`, `suggest_next_action`, `list_what_i_can_do`, `get_campaign_spec`,
+  `validate_campaign_draft`, `explain_platform_error`, `why_did_this_fail`, `verify_campaign_is_live`,
+  `usage_value_summary`. Empat tool ditarik 24 Agu 2026 karena salah melapor — "diagnosis salah lebih buruk
+  dari tidak ada".
+- STRATEGY.md: `AVOID / PREFER / CONSTRAINT / REQUIRE: [teks] — [alasan]`, dikelompokkan per bagian, plus
+  Decision Log bertanggal dan Archived Directives. Disimpan hanya setelah pengguna mengonfirmasi; percakapan
+  eksplorasi tidak pernah disimpan. Semua skill membacanya dulu; pelanggaran = "Strategy Drift".
+- Kit Playbook: `SKILL.md`, `AGENTS.md` (satu-satunya instruksi; `AGENT_INSTRUCTIONS.md` dibuang karena
+  duplikat), `PROMPTBOOK.md` ("menu, bukan naskah"), `README.md`, `references/account-profile.md`,
+  `references/working-with-adspirer.md`. Pembuatannya mengklasifikasi akun: scaling / stalled / newly built /
+  seasonal. Aturan pasang: instruksi = AGENTS.md, pengetahuan = account-profile.md.
+- Changelog — pelajaran Google Ads yang mahal: tulis yang "berhasil" padahal tidak berubah (bid strategy,
+  CPC ceiling 191 panggilan, budget) → wajib baca ulang; field konversi yang immutable menggagalkan seluruh
+  update atomik; strategi portofolio → `OPERATION_NOT_PERMITTED_FOR_CONTEXT`; kampanye AI Max broad-only
+  menolak EXACT/PHRASE; ekstensi ada di 3 tingkat (akun/kampanye/grup — 609 cek salah "Sitelinks (0)");
+  aset telepon tidak pernah dideduplikasi Google; `CONCURRENT_MODIFICATION` perlu dicoba ulang; audit dengan
+  MCC salah sempat memberi "Grade A" pada akun yang tidak terbaca (kini "Incomplete"); IDR mata uang tanpa
+  desimal (budget Meta sempat 100× terlalu besar).
+- Otomasi: Watch Agent tiap 15 menit, monitor (`consecutive_days` 1–14, `test_monitor`), brief terjadwal,
+  agen Ad Ops dengan antrean persetujuan; panduan otomasi: mode *shadow*, maks ±20% per putaran, satu penulis
+  per portofolio, potong 1–2 hari terakhir karena jeda atribusi.
+- Kuota: Free 15 · Plus 150 ($49) · Pro 600 ($99) · Max 3.000 ($199) panggilan/bulan; peluncuran satu
+  kampanye ±8–12 panggilan; Playbook $39/akun.
+- Celah Adspirer untuk pasar kita: `research_keywords` default "United States" tanpa parameter bahasa;
+  beberapa tool menyebut nominal dalam "dollar"; zona waktu brief default America/New_York.
+
+**Diterapkan ke AdsAi (putaran ini)**
+- Kit dossier mengikuti tata letak di atas (README + `references/`, AGENT_INSTRUCTIONS.md dihapus otomatis,
+  PROMPTBOOK sebagai menu) + **klasifikasi jenis akun** MACET / BARU / BERTUMBUH / STABIL dengan prioritas &
+  ritme kerja (musiman ditandai tim lewat arahan strategi).
+- **Strategi klien** `strategi/<klien>.md` (format STRATEGY.md): tool `client_strategy` &
+  `add_strategy_directive` (pratinjau → confirm, Decision Log otomatis). Istilah `PREFER "…"` dilindungi dari
+  usulan negatif; istilah `AVOID "…"` yang masih memakan biaya dilaporkan sebagai penyimpangan strategi di
+  `suggest_negative_keywords`, dossier, dan `suggest_next_action`.
+- **Penerjemah error** (`errors.py`, 30+ kode yang divalidasi terhadap enum API v25) → setiap error membawa
+  `Saran:`; error sementara dicoba ulang otomatis (1 dtk, 3 dtk). **Log kegagalan** + `why_did_this_fail`,
+  `explain_error`.
+- `suggest_next_action` (setara start_here per klien) dan `verify_campaign_is_live` (data tak terbaca tidak
+  pernah dinyatakan lolos).
+- `update_keyword_bids` (maks 2×, peringatan Smart Bidding) dan `remove_keywords` dengan gerbang
+  `confirm_delete`; `set_status` kata kunci kini dibaca ulang.
+
+**Backlog baru** (lihat ROADMAP): keyword research Indonesia, monitor + antrean persetujuan, ekstensi tingkat
+akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–F.
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
@@ -187,3 +243,4 @@ adspirer.com/blog/automation-platform-for-agencies.
 | 2026-10-14 | `get_tool_schema` 7 tool targeting | Lihat §5 putaran 4 — tidak memakai kuota |
 | 2026-10-14 | Screenshot halaman Expert Space (adspirer.ai) dari pengguna | Lihat §5 putaran 5 |
 | 2026-10-14 | Dokumentasi publik adspirer.com (via pencarian web) | Lihat §5 putaran 6 |
+| 2026-10-14 | Seluruh dokumentasi publik (panduan, KB, 178 referensi API, changelog) dibaca langsung | Lihat §5 putaran 7 |

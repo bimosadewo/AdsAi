@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (87 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (102 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (53)
+## Tools MCP (61)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -52,7 +52,19 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `update_conversion_action` | Utama/Sekunder, cara hitung, jangka waktu, status |
 | `update_bid_strategy` | Maks. konversi (± target CPA), maks. klik (± CPC maks), CPC manual |
 | `add_keywords` | Tambah kata kunci ke grup iklan |
+| `update_keyword_bids` | Bid CPC kata kunci (maks 2× per perubahan; peringatan bila Smart Bidding mengabaikannya) |
+| `remove_keywords` | Hapus permanen kata kunci — butuh `confirm_delete=true` (untuk berhenti sementara: `set_status`) |
 | `change_log` | Riwayat perubahan lewat AdsAi |
+
+**Diagnosis & strategi klien** (hanya baca, kecuali `add_strategy_directive` yang menulis berkas lokal)
+| Tool | Fungsi |
+|---|---|
+| `suggest_next_action` | Mulai di sini per klien: jenis akun + urutan langkah (KRITIS → penyimpangan strategi → peringatan → rutin) |
+| `verify_campaign_is_live` | Cek langsung: status, budget, status utama Google + alasan, grup/iklan/kata kunci aktif, tayangan kemarin |
+| `why_did_this_fail` | Kegagalan tool terakhir (error asli Google + kode + saran); bedakan masalah login vs permintaan |
+| `explain_error` | Terjemahkan pesan error Google Ads mentah jadi sebab & perbaikan |
+| `client_strategy` | Arahan strategi klien (AVOID / PREFER / CONSTRAINT / REQUIRE) + log keputusan |
+| `add_strategy_directive` | Simpan keputusan sebagai arahan (pratinjau → confirm), tercatat di Decision Log |
 
 **Struktur & iklan**
 | Tool | Fungsi |
@@ -98,7 +110,7 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `client_health` | Alert satu/semua klien + pesan WA siap kirim |
 | `weekly_report` | Laporan mingguan (pratinjau) |
 | `send_to_client` | Kirim pesan ke WA/email klien (pratinjau dulu, lalu `confirm=true`) |
-| `client_dossier` | **Kit dossier klien untuk agen AI**: SKILL.md, PROMPTBOOK.md, AGENT_INSTRUCTIONS.md, AGENTS.md (lihat di bawah) |
+| `client_dossier` | **Kit dossier klien untuk agen AI** (format Agent Skills, lihat di bawah) |
 
 **Analisa (Fase 4)**
 | Tool | Fungsi |
@@ -129,7 +141,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 87 tes
+   pytest                           # opsional: 102 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -173,10 +185,12 @@ gratis, untuk semua klien, dan bisa diperbarui kapan saja (`adsai dossier` / too
 
 | Berkas | Isi |
 |---|---|
-| `SKILL.md` | Profil akun: target, produk dilindungi, ringkasan 90 hari & 7 hari, kampanye aktif + flag pengaturan, konversi Utama, pencarian pemenang, kandidat negatif aman, temuan terkini, aturan main |
-| `PROMPTBOOK.md` | 12+ prompt siap pakai Pemula → Menengah → Ahli, disesuaikan dengan nama klien & kampanye |
-| `AGENT_INSTRUCTIONS.md` | Instruksi siap tempel untuk Claude/ChatGPT Project |
-| `AGENTS.md` | Instruksi untuk Claude Code / Cursor / Codex |
+| `SKILL.md` | Doktrin akun: **jenis akun** (MACET / BARU / BERTUMBUH / STABIL) + prioritas & ritme kerja, target, kata dilindungi, arahan strategi klien, aturan main |
+| `AGENTS.md` | Satu-satunya berkas instruksi: root proyek Claude Code/Cursor/Codex, atau tempel ke *Project instructions* |
+| `PROMPTBOOK.md` | Menu prompt Pemula → Ahli (pilih satu, bukan dijalankan semua), dengan titik mulai sesuai jenis akun |
+| `README.md` | Ke mana tiap berkas dipasang |
+| `references/account-profile.md` | Angka 90 & 7 hari, kampanye aktif + flag, konversi Utama, pencarian pemenang, kandidat negatif, temuan, penyimpangan strategi |
+| `references/working-with-adsai.md` | Kontrak tool: baca → pratinjau → eksekusi → verifikasi, pagar pengaman, peta tool |
 
 Disimpan di `dossiers/<klien>/` (di-`.gitignore`). Kontak klien tidak dimasukkan.
 
@@ -206,8 +220,11 @@ dalam Bahasa Indonesia — pelajaran utama dari Adspirer (lihat [NOTICE](NOTICE)
   `logs/<customer_id>.jsonl` (operator, waktu, sebelum → sesudah), lalu dibaca ulang dari akun
   (`terverifikasi`).
 - `update_bid_strategy` memperingatkan bila Target CPA dipasang dengan < 30 konversi/30 hari.
-- Menghapus kampanye/grup iklan permanen sengaja tidak disediakan.
-- Kredensial (`.env`, `client_secret*.json`) dan data klien (`clients.yaml`, `logs/`) di-`.gitignore`.
+- Menghapus kampanye/grup iklan permanen sengaja tidak disediakan; menghapus kata kunci butuh
+  `confirm_delete=true` di samping `confirm=true`.
+- Error Google diterjemahkan jadi `Saran:` (bahasa awam); error sementara (`CONCURRENT_MODIFICATION`,
+  kuota sesaat) dicoba ulang otomatis 2×. Setiap kegagalan tercatat di `logs/_gagal.jsonl`.
+- Kredensial (`.env`, `client_secret*.json`) dan data klien (`clients.yaml`, `logs/`, `dossiers/`, `strategi/`) di-`.gitignore`.
 
 ## Struktur
 
@@ -215,7 +232,8 @@ dalam Bahasa Indonesia — pelajaran utama dari Adspirer (lihat [NOTICE](NOTICE)
 src/gads_mcp/
   config.py     .env, pengaturan pengaman
   gaql.py       query GAQL + pengolah hasil
-  client.py     pembungkus Google Ads API + pesan error
+  client.py     pembungkus Google Ads API + pesan error + coba ulang
+  errors.py     penerjemah kode error Google → sebab & saran
   mutations.py  operasi ubah (pratinjau → konfirmasi → audit)
   safety.py     aturan pengaman + log audit
   clients.py    clients.yaml
@@ -225,10 +243,12 @@ src/gads_mcp/
   rsa.py        validasi teks Responsive Search Ad
   extensions.py ekstensi: validasi + tambah/ubah/jeda/lepas (atomik)
   targeting.py  pengaturan kampanye & targeting + audit
-  dossier.py    kit dossier klien untuk agen AI
+  dossier.py    kit dossier klien untuk agen AI + klasifikasi jenis akun
+  strategy.py   arahan strategi klien (strategi/<klien>.md)
+  diagnostics.py langkah berikutnya, cek tayang, kegagalan terakhir
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     53 tools MCP
+  server.py     61 tools MCP
   cli.py        perintah `adsai`
 ```

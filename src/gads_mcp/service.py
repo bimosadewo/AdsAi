@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from . import dossier
+from . import dossier, strategy
 from .analysis import Alert, evaluate_alerts
 from .client import Ads
 from .clients import Client, find_client, load_clients
@@ -56,7 +56,9 @@ def build_weekly_report(ctx: Context, client: Client, fmt: str = "whatsapp") -> 
 
 
 def build_dossier(ctx: Context, client: Client, write: bool = True, out_dir: str | None = None) -> dict[str, Any]:
-    kit = dossier.build_kit(client, dossier.fetch_data(ctx.ads, client))
+    data = dossier.fetch_data(ctx.ads, client)
+    data["strategi"] = strategy.load(client.key)["arahan"]
+    kit = dossier.build_kit(client, data)
     result: dict[str, Any] = {"klien": client.name, "berkas": kit}
     if write:
         base = Path(out_dir or os.getenv("ADSAI_DOSSIER_DIR") or PROJECT_ROOT / "dossiers")

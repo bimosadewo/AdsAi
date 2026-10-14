@@ -14,7 +14,7 @@ from typing import Any, Callable, Iterable
 
 from google.ads.googleads.errors import GoogleAdsException
 
-from .client import Ads, AdsError, _describe
+from .client import Ads, ads_error, with_retry
 from . import rsa
 from .safety import AuditLog, SafetyError, check_budget, ensure_writable, to_micros
 
@@ -85,10 +85,7 @@ class Mutator:
         svc = self.gc.get_service(service)
         key = "mutate_operations" if method == "mutate" else "operations"
         request = {"customer_id": cid, key: operations, "validate_only": validate_only}
-        try:
-            response = getattr(svc, method)(request=request)
-        except GoogleAdsException as ex:
-            raise AdsError(_describe(ex)) from ex
+        response = with_retry(lambda: getattr(svc, method)(request=request))
         if validate_only:
             return []
         if method == "mutate":
@@ -246,7 +243,7 @@ class Mutator:
                 for r in batch.results:
                     return r.campaign.campaign_budget
         except GoogleAdsException as ex:
-            raise AdsError(_describe(ex)) from ex
+            raise ads_error(ex) from ex
         raise ValueError(f"Budget untuk kampanye {campaign_id} tidak ditemukan.")
 
     # ---------- status ----------
@@ -324,6 +321,9 @@ class Mutator:
         elif level == "ad_group":
             verify = lambda: self.ads.search(cid, "SELECT ad_group.id, ad_group.status FROM ad_group "  # noqa: E731
                                                   f"WHERE ad_group.id IN ({','.join(ids)})")
+        elif level == "keyword":
+            verify = lambda: [{"id": f"{a}~{c}", "status": r.get("ad_group_criterion.status")}  # noqa: E731
+                              for (a, c), r in self._keyword_rows(cid, pairs).items()]
         return self._finish(
             cid=cid, action=f"set_status_{level}", target={"level": level, "ids": ids},
             before=before, after={"status": status},
@@ -479,6 +479,100 @@ class Mutator:
             before=None, after={"kata_kunci": wanted, "cpc_bid": cpc_bid, "dijeda": paused},
             service="AdGroupCriterionService", method="mutate_ad_group_criteria",
             operations=ops, confirm=confirm,
+        )
+
+    @staticmethod
+    def _keyword_pairs(ids: Iterable[str]) -> list[tuple[str, str]]:
+        pairs = []
+        for i in ids:
+            if "~" not in str(i):
+                raise ValueError("ID kata kunci harus berformat 'ad_group_id~criterion_id' (lihat tool keywords).")
+            ag, crit = str(i).split("~", 1)
+            pairs.append((_digits(ag, "ad_group_id"), _digits(crit, "criterion_id")))
+        if not pairs:
+            raise ValueError("ID kata kunci tidak boleh kosong.")
+        return pairs
+
+    def _keyword_rows(self, cid: str, pairs: list[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
+        crits = ",".join(sorted({c for _, c in pairs}))
+        groups = ",".join(sorted({a for a, _ in pairs}))
+        rows = self.ads.search(cid, (
+            "SELECT ad_group.id, ad_group_criterion.criterion_id, ad_group_criterion.keyword.text, "
+            "ad_group_criterion.keyword.match_type, ad_group_criterion.status, ad_group_criterion.cpc_bid_micros, "
+            "campaign.name, campaign.bidding_strategy_type FROM ad_group_criterion "
+            f"WHERE ad_group.id IN ({groups}) AND ad_group_criterion.criterion_id IN ({crits})"))
+        return {(str(r.get("ad_group.id")), str(r.get("ad_group_criterion.criterion_id"))): r for r in rows}
+
+    def update_keyword_bids(self, cid: str, bids: list[dict], confirm: bool) -> dict:
+        """bids: [{"id": "ad_group_id~criterion_id", "cpc_bid": 5000}] (rupiah)."""
+        wanted: dict[tuple[str, str], float] = {}
+        for b in bids:
+            pair = self._keyword_pairs([b.get("id")])[0]
+            bid = float(b.get("cpc_bid") or 0)
+            if bid <= 0:
+                raise ValueError(f"cpc_bid untuk {b.get('id')} harus > 0.")
+            wanted[pair] = bid
+        current = self._keyword_rows(cid, list(wanted))
+        missing = [f"{a}~{c}" for a, c in wanted if (a, c) not in current]
+        if missing:
+            raise ValueError(f"Kata kunci tidak ditemukan: {missing}. Ambil ID dari tool keywords.")
+        factor = self.safety.max_budget_increase_factor
+        notes, before, after, ops = [], [], [], []
+        svc = self.gc.get_service("AdGroupCriterionService")
+        smart = set()
+        for (ag, crit), bid in wanted.items():
+            row = current[(ag, crit)]
+            old = float(row.get("ad_group_criterion.cpc_bid") or 0)
+            if old and bid > old * factor:
+                raise SafetyError(f"Bid '{row.get('ad_group_criterion.keyword.text')}' naik dari {old:,.0f} ke "
+                                  f"{bid:,.0f} (> {factor:g}×). Naikkan bertahap.")
+            if row.get("campaign.bidding_strategy_type") not in ("MANUAL_CPC", "ENHANCED_CPC"):
+                smart.add(f"{row.get('campaign.name')} ({row.get('campaign.bidding_strategy_type')})")
+            before.append({"id": f"{ag}~{crit}", "kata_kunci": row.get("ad_group_criterion.keyword.text"),
+                           "cpc_bid": old or None})
+            after.append({"id": f"{ag}~{crit}", "cpc_bid": bid})
+            op = self.gc.get_type("AdGroupCriterionOperation")
+            op.update.resource_name = svc.ad_group_criterion_path(cid, ag, crit)
+            op.update.cpc_bid_micros = to_micros(bid)
+            op.update_mask.paths.append("cpc_bid_micros")
+            ops.append(op)
+        if smart:
+            notes.append("Kampanye ini memakai Smart Bidding — bid kata kunci DIABAIKAN Google (hanya berlaku untuk "
+                         f"Manual CPC): {', '.join(sorted(smart))}. Pertimbangkan untuk tidak menjalankannya.")
+        pairs = list(wanted)
+        return self._finish(
+            cid=cid, action="update_keyword_bids", target={"ids": [f"{a}~{c}" for a, c in pairs]},
+            before=before, after=after, service="AdGroupCriterionService", method="mutate_ad_group_criteria",
+            operations=ops, confirm=confirm, notes=notes or None,
+            verify=lambda: [{"id": f"{a}~{c}", "cpc_bid": r.get("ad_group_criterion.cpc_bid")}
+                            for (a, c), r in self._keyword_rows(cid, pairs).items()],
+        )
+
+    def remove_keywords(self, cid: str, ids: list[str], confirm: bool, confirm_delete: bool = False) -> dict:
+        """Hapus permanen kata kunci (bukan negatif). Butuh confirm_delete=true saat confirm=true."""
+        pairs = self._keyword_pairs(ids)
+        current = self._keyword_rows(cid, pairs)
+        missing = [f"{a}~{c}" for a, c in pairs if (a, c) not in current]
+        if missing:
+            raise ValueError(f"Kata kunci tidak ditemukan: {missing}. Ambil ID dari tool keywords.")
+        if confirm and not confirm_delete:
+            raise SafetyError("Menghapus kata kunci bersifat PERMANEN (statistiknya tidak bisa dipulihkan dengan "
+                              "mengaktifkan lagi). Bila maksudnya berhenti sementara, pakai set_status level keyword "
+                              "PAUSED. Untuk tetap menghapus, kirim confirm=true DAN confirm_delete=true.")
+        svc = self.gc.get_service("AdGroupCriterionService")
+        ops = []
+        for ag, crit in pairs:
+            op = self.gc.get_type("AdGroupCriterionOperation")
+            op.remove = svc.ad_group_criterion_path(cid, ag, crit)
+            ops.append(op)
+        before = [{"id": f"{a}~{c}", "kata_kunci": current[(a, c)].get("ad_group_criterion.keyword.text"),
+                   "match_type": current[(a, c)].get("ad_group_criterion.keyword.match_type")} for a, c in pairs]
+        return self._finish(
+            cid=cid, action="remove_keywords", target={"ids": [f"{a}~{c}" for a, c in pairs]},
+            before=before, after="DIHAPUS", service="AdGroupCriterionService", method="mutate_ad_group_criteria",
+            operations=ops, confirm=confirm,
+            notes=["Penghapusan permanen. Alternatif yang bisa dibatalkan: set_status level keyword PAUSED."],
+            verify=lambda: {"masih_ada": [f"{a}~{c}" for (a, c) in self._keyword_rows(cid, pairs)]},
         )
 
     # ---------- shared negative keyword list ----------

@@ -118,6 +118,8 @@ ACTION_LABEL = {
     "update_conversion_action": "Merapikan pengaturan konversi",
     "update_bid_strategy": "Mengubah strategi bidding",
     "add_keywords": "Menambah kata kunci",
+    "update_keyword_bids": "Mengubah bid kata kunci",
+    "remove_keywords": "Menghapus kata kunci",
     "set_status_ad": "Mengubah status iklan",
     "create_negative_list": "Membuat daftar kata kunci negatif",
     "add_to_negative_list": "Menambah kata ke daftar negatif bersama",

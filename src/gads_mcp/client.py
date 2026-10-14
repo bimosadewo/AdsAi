@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from functools import cached_property
 from typing import Any
 
@@ -11,11 +12,18 @@ from google.auth.exceptions import RefreshError
 from google.protobuf.json_format import MessageToDict
 
 from .config import Settings, normalize_customer_id
+from .errors import codes_of, hints_for, is_retryable
 from .gaql import flatten, humanize
+
+RETRY_DELAYS = (1.0, 3.0)   # detik; hanya untuk error sementara (lihat errors.RETRYABLE)
 
 
 class AdsError(RuntimeError):
     """Error Google Ads yang sudah diringkas agar mudah dibaca Claude."""
+
+    def __init__(self, message: str, codes: list[str] | None = None):
+        super().__init__(message)
+        self.codes = codes or []
 
 
 AUTH_HINT = (
@@ -24,9 +32,33 @@ AUTH_HINT = (
 )
 
 
+def error_codes(ex: GoogleAdsException) -> list[str]:
+    return [c for e in ex.failure.errors for c in codes_of(e.error_code)]
+
+
 def _describe(ex: GoogleAdsException) -> str:
-    parts = [f"{e.error_code}: {e.message}".replace("\n", " ") for e in ex.failure.errors]
-    return f"Google Ads API menolak permintaan (request_id={ex.request_id}). " + " | ".join(parts)
+    parts = [f"{e.error_code}: {e.message}".replace("\n", " ").replace("  ", " ") for e in ex.failure.errors]
+    text = f"Google Ads API menolak permintaan (request_id={ex.request_id}). " + " | ".join(parts)
+    hints = hints_for(error_codes(ex))
+    if hints:
+        text += " || Saran: " + " ".join(hints)
+    return text
+
+
+def ads_error(ex: GoogleAdsException) -> AdsError:
+    return AdsError(_describe(ex), error_codes(ex))
+
+
+def with_retry(call, sleep=time.sleep):
+    """Jalankan call(); ulangi bila Google mengembalikan error sementara. Mutate Google atomik, jadi
+    permintaan yang gagal tidak menerapkan apa pun dan aman diulang."""
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return call()
+        except GoogleAdsException as ex:
+            if delay is None or not is_retryable(error_codes(ex)):
+                raise ads_error(ex) from ex
+            sleep(delay)
 
 
 class Ads:
@@ -58,7 +90,7 @@ class Ads:
                     raw = MessageToDict(row._pb, preserving_proto_field_name=True)
                     rows.append(humanize(flatten(raw)))
         except GoogleAdsException as ex:
-            raise AdsError(_describe(ex)) from ex
+            raise ads_error(ex) from ex
         return rows
 
     def accessible_customers(self) -> list[str]:
@@ -66,5 +98,5 @@ class Ads:
         try:
             names = service.list_accessible_customers().resource_names
         except GoogleAdsException as ex:
-            raise AdsError(_describe(ex)) from ex
+            raise ads_error(ex) from ex
         return [n.split("/")[-1] for n in names]
