@@ -98,11 +98,12 @@ def test_evaluate_alerts_orders_by_severity():
         "pacing": {"status": "BOROS", "proyeksi_akhir_bulan": 4e6, "persen_proyeksi": 133.3, "budget_bulanan": 3e6},
         "jumlah_konversi_utama": 17,
         "impor_offline_bermasalah": [{"nama": "ContactWA", "rate": 0.2}],
+        "iklan_ditolak": [{"kampanye": "Lead-Search", "grup": "Geotextile", "ad_id": "9"}],
     }
     alerts = analysis.evaluate_alerts(snap, client)
     codes = [a.kode for a in alerts]
     assert {"TIDAK_TAYANG", "KONVERSI_NOL", "CPA_NAIK", "DI_ATAS_TARGET", "PACING_BOROS",
-            "KONVERSI_UTAMA_BERLEBIH", "IMPOR_GAGAL"} <= set(codes)
+            "KONVERSI_UTAMA_BERLEBIH", "IMPOR_GAGAL", "IKLAN_DITOLAK"} <= set(codes)
     levels = [a.level for a in alerts]
     assert levels == sorted(levels, key=lambda lv: analysis.LEVEL_ORDER[lv])
     assert analysis.evaluate_alerts({}, client) == []

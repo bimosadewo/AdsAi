@@ -118,6 +118,14 @@ ACTION_LABEL = {
     "update_conversion_action": "Merapikan pengaturan konversi",
     "update_bid_strategy": "Mengubah strategi bidding",
     "add_keywords": "Menambah kata kunci",
+    "set_status_ad": "Mengubah status iklan",
+    "create_negative_list": "Membuat daftar kata kunci negatif",
+    "add_to_negative_list": "Menambah kata ke daftar negatif bersama",
+    "remove_from_negative_list": "Menghapus kata dari daftar negatif bersama",
+    "attach_negative_list": "Memasang daftar negatif ke kampanye",
+    "detach_negative_list": "Melepas daftar negatif dari kampanye",
+    "create_rsa": "Membuat iklan baru",
+    "update_rsa": "Memperbarui teks iklan",
 }
 
 
@@ -127,8 +135,10 @@ def describe_change(entry: dict[str, Any]) -> str:
     name = target.get("kampanye") or target.get("nama") or target.get("campaign_id") or ""
     after = entry.get("sesudah") or {}
     detail = ""
-    if entry.get("aksi") == "add_negative_keywords":
+    if entry.get("aksi") in ("add_negative_keywords", "add_to_negative_list"):
         detail = f"{len(after.get('ditambahkan', []))} kata"
+    elif entry.get("aksi") == "attach_negative_list":
+        detail = f"{len(after.get('ditambahkan', []))} kampanye"
     elif entry.get("aksi") == "update_budget":
         before = (entry.get("sebelum") or {}).get("budget_harian")
         detail = f"{rupiah(before)} → {rupiah(after.get('budget_harian'))}/hari"

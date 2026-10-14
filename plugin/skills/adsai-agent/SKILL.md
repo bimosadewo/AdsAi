@@ -51,6 +51,7 @@ dan jalankan setelah pengguna setuju.
 |---|---|
 | Tahu kondisi akun, laporan, scorecard, cek tracking | `adsai-review` |
 | Memangkas pemborosan, negative keyword, realokasi, pacing | `adsai-optimasi` |
+| Menulis/memperbaiki iklan RSA, ad strength, iklan ditolak | `adsai-iklan` |
 | Mulai/tidak tahu harus apa | `list_clients` lalu `client_health` |
 
 ## Peta tool server `google-ads`
@@ -59,10 +60,13 @@ dan jalankan setelah pengguna setuju.
 |---|---|
 | Klien & akun | `list_clients`, `list_accounts` |
 | Kesehatan cepat | `client_health` (satu/semua klien), `account_alerts` |
-| Performa | `campaign_performance`, `keywords`, `search_terms`, `run_query` |
+| Performa | `campaign_performance`, `ad_performance`, `keywords`, `search_terms`, `run_query` |
+| Struktur | `campaign_structure` (grup iklan, kata kunci, iklan, ekstensi, negatif + temuan audit) |
 | Tracking | `conversion_actions` |
 | Analisa | `ngram_analysis`, `suggest_negative_keywords`, `detect_anomalies`, `budget_pacing` |
-| Ubah (pratinjau → confirm) | `add_negative_keywords`, `remove_negative_keywords`, `update_budget`, `set_status`, `update_conversion_action`, `update_bid_strategy`, `add_keywords` |
+| Ubah (pratinjau → confirm) | `add_negative_keywords`, `remove_negative_keywords`, `update_budget`, `set_status` (campaign/ad_group/keyword/ad), `update_conversion_action`, `update_bid_strategy`, `add_keywords` |
+| Shared negative list | `list_negative_keyword_lists`, `get_negative_keyword_list`, `create_negative_keyword_list`, `add_negative_keywords_to_list`, `remove_negative_keywords_from_list`, `attach_negative_keyword_list`, `detach_negative_keyword_list` |
+| Iklan RSA | `validate_ad_copy` (tanpa API), `create_responsive_search_ad` (dibuat dijeda), `update_responsive_search_ad` |
 | Riwayat | `change_log` |
 | Klien | `weekly_report` (pratinjau), `send_to_client` (pratinjau → confirm) |
 

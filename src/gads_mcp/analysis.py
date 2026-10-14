@@ -241,6 +241,12 @@ def evaluate_alerts(snapshot: dict[str, Any], client: Any) -> list[Alert]:
                             f"Kampanye '{c['nama']}' aktif tapi 0 tayangan 3 hari terakhir "
                             f"({c.get('alasan') or 'cek saldo/pembayaran'})."))
 
+    rejected = snapshot.get("iklan_ditolak", [])
+    if rejected:
+        sample = ", ".join(f"{r['kampanye']} / {r['grup']}" for r in rejected[:3])
+        alerts.append(Alert("KRITIS" if len(rejected) >= 3 else "PERINGATAN", "IKLAN_DITOLAK",
+                            f"{len(rejected)} iklan aktif DITOLAK Google ({sample}). Cek kebijakan di UI."))
+
     daily = snapshot.get("harian", [])
     streak = zero_conversion_streak(daily)
     if streak >= th.zero_conversion_days:

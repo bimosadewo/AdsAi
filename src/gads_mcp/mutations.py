@@ -15,11 +15,12 @@ from typing import Any, Callable, Iterable
 from google.ads.googleads.errors import GoogleAdsException
 
 from .client import Ads, AdsError, _describe
+from . import rsa
 from .safety import AuditLog, SafetyError, check_budget, ensure_writable, to_micros
 
 MATCH_TYPES = ("EXACT", "PHRASE", "BROAD")
 STATUSES = ("ENABLED", "PAUSED")
-LEVELS = ("campaign", "ad_group", "keyword")
+LEVELS = ("campaign", "ad_group", "keyword", "ad")
 BID_STRATEGIES = ("MAXIMIZE_CONVERSIONS", "MAXIMIZE_CLICKS", "MANUAL_CPC")
 COUNTING_TYPES = ("ONE_PER_CLICK", "MANY_PER_CLICK")
 MIN_CONVERSIONS_FOR_TARGET = 30  # konversi 30 hari minimum sebelum memasang Target CPA
@@ -268,6 +269,22 @@ class Mutator:
                 op.update_mask.paths.append("status")
                 ops.append(op)
             service, method = "AdGroupService", "mutate_ad_groups"
+        elif level == "ad":
+            svc = self.gc.get_service("AdGroupAdService")
+            pairs = []
+            for i in ids:
+                if "~" not in str(i):
+                    raise ValueError("ID iklan harus berformat 'ad_group_id~ad_id'.")
+                ag, ad = str(i).split("~", 1)
+                pairs.append((_digits(ag, "ad_group_id"), _digits(ad, "ad_id")))
+            before = [{"ad_group_id": ag, "ad_id": ad} for ag, ad in pairs]
+            for ag, ad in pairs:
+                op = self.gc.get_type("AdGroupAdOperation")
+                op.update.resource_name = svc.ad_group_ad_path(cid, ag, ad)
+                op.update.status = getattr(self.gc.enums.AdGroupAdStatusEnum, status)
+                op.update_mask.paths.append("status")
+                ops.append(op)
+            service, method = "AdGroupAdService", "mutate_ad_group_ads"
         else:
             svc = self.gc.get_service("AdGroupCriterionService")
             pairs = []
@@ -446,4 +463,245 @@ class Mutator:
             before=None, after={"kata_kunci": wanted, "cpc_bid": cpc_bid, "dijeda": paused},
             service="AdGroupCriterionService", method="mutate_ad_group_criteria",
             operations=ops, confirm=confirm,
+        )
+
+    # ---------- shared negative keyword list ----------
+
+    def list_items(self, cid: str, shared_set_id: str) -> list[dict[str, Any]]:
+        sid = _digits(shared_set_id, "shared_set_id")
+        return self.ads.search(cid, (
+            "SELECT shared_criterion.criterion_id, shared_criterion.keyword.text, "
+            "shared_criterion.keyword.match_type FROM shared_criterion "
+            f"WHERE shared_set.id = {sid} AND shared_criterion.type = 'KEYWORD'"
+        ))
+
+    def _list_info(self, cid: str, sid: str) -> dict[str, Any]:
+        rows = self.ads.search(cid, "SELECT shared_set.id, shared_set.name, shared_set.type, shared_set.member_count, "
+                                    f"shared_set.reference_count FROM shared_set WHERE shared_set.id = {sid}")
+        if not rows:
+            raise ValueError(f"Negative keyword list {sid} tidak ditemukan.")
+        if rows[0].get("shared_set.type") not in (None, "NEGATIVE_KEYWORDS"):
+            raise ValueError(f"Shared set {sid} bukan negative keyword list.")
+        return rows[0]
+
+    def create_negative_list(self, cid: str, name: str, confirm: bool) -> dict:
+        name = " ".join(str(name).split())
+        if not name:
+            raise ValueError("Nama list tidak boleh kosong.")
+        existing = self.ads.search(cid, "SELECT shared_set.id, shared_set.name FROM shared_set "
+                                        "WHERE shared_set.type = 'NEGATIVE_KEYWORDS' AND shared_set.status = 'ENABLED'")
+        if any(r.get("shared_set.name", "").lower() == name.lower() for r in existing):
+            raise ValueError(f"List bernama '{name}' sudah ada.")
+        op = self.gc.get_type("SharedSetOperation")
+        op.create.name = name
+        op.create.type_ = self.gc.enums.SharedSetTypeEnum.NEGATIVE_KEYWORDS
+        result = self._finish(
+            cid=cid, action="create_negative_list", target={"nama": name}, before=None, after={"nama": name},
+            service="SharedSetService", method="mutate_shared_sets", operations=[op], confirm=confirm,
+        )
+        if result["status"] == "DIJALANKAN" and result.get("resource"):
+            result["shared_set_id"] = result["resource"][0].split("/")[-1]
+        return result
+
+    def add_to_negative_list(self, cid: str, shared_set_id: str, keywords: list[dict], confirm: bool) -> dict:
+        sid = _digits(shared_set_id, "shared_set_id")
+        info = self._list_info(cid, sid)
+        wanted = normalize_keywords(keywords)
+        existing = {(r.get("shared_criterion.keyword.text", "").lower(), r.get("shared_criterion.keyword.match_type"))
+                    for r in self.list_items(cid, sid)}
+        new = [k for k in wanted if (k["text"], k["match_type"]) not in existing]
+        skipped = [k for k in wanted if (k["text"], k["match_type"]) in existing]
+        if not new:
+            return {"status": "TIDAK_ADA_PERUBAHAN", "pesan": "Semua kata kunci sudah ada di list.", "dilewati": skipped}
+        path = self.gc.get_service("SharedSetService").shared_set_path(cid, sid)
+        ops = []
+        for k in new:
+            op = self.gc.get_type("SharedCriterionOperation")
+            op.create.shared_set = path
+            op.create.keyword.text = k["text"]
+            op.create.keyword.match_type = getattr(self.gc.enums.KeywordMatchTypeEnum, k["match_type"])
+            ops.append(op)
+        notes = [f"List dipakai {info.get('shared_set.reference_count') or 0} kampanye — semuanya ikut terpengaruh."]
+        if skipped:
+            notes.append(f"{len(skipped)} kata kunci dilewati karena sudah ada.")
+        return self._finish(
+            cid=cid, action="add_to_negative_list", target={"shared_set_id": sid, "nama": info.get("shared_set.name")},
+            before={"jumlah": len(existing)}, after={"ditambahkan": new},
+            service="SharedCriterionService", method="mutate_shared_criteria", operations=ops,
+            confirm=confirm, notes=notes, verify=lambda: {"jumlah": len(self.list_items(cid, sid))},
+        )
+
+    def remove_from_negative_list(self, cid: str, shared_set_id: str, texts: list[str], confirm: bool) -> dict:
+        sid = _digits(shared_set_id, "shared_set_id")
+        info = self._list_info(cid, sid)
+        wanted = {" ".join(t.lower().split()) for t in texts}
+        rows = [r for r in self.list_items(cid, sid) if r.get("shared_criterion.keyword.text", "").lower() in wanted]
+        if not rows:
+            return {"status": "TIDAK_ADA_PERUBAHAN", "pesan": "Tidak ada kata kunci yang cocok di list."}
+        svc = self.gc.get_service("SharedCriterionService")
+        ops = []
+        for r in rows:
+            op = self.gc.get_type("SharedCriterionOperation")
+            op.remove = svc.shared_criterion_path(cid, sid, r["shared_criterion.criterion_id"])
+            ops.append(op)
+        return self._finish(
+            cid=cid, action="remove_from_negative_list", target={"shared_set_id": sid, "nama": info.get("shared_set.name")},
+            before={"dihapus": [r.get("shared_criterion.keyword.text") for r in rows]}, after=None,
+            service="SharedCriterionService", method="mutate_shared_criteria", operations=ops, confirm=confirm,
+            verify=lambda: {"jumlah": len(self.list_items(cid, sid))},
+        )
+
+    def _attached(self, cid: str, sid: str) -> list[str]:
+        rows = self.ads.search(cid, "SELECT campaign.id FROM campaign_shared_set "
+                                    f"WHERE shared_set.id = {sid} AND campaign_shared_set.status = 'ENABLED'")
+        return [r.get("campaign.id") for r in rows]
+
+    def attach_negative_list(self, cid: str, shared_set_id: str, campaign_ids: list[str], confirm: bool) -> dict:
+        sid = _digits(shared_set_id, "shared_set_id")
+        info = self._list_info(cid, sid)
+        ids = [_digits(i, "campaign_id") for i in campaign_ids]
+        if not ids:
+            raise ValueError("campaign_ids tidak boleh kosong.")
+        attached = set(self._attached(cid, sid))
+        new = [i for i in ids if i not in attached]
+        if not new:
+            return {"status": "TIDAK_ADA_PERUBAHAN", "pesan": "List sudah terpasang di semua kampanye tersebut."}
+        set_path = self.gc.get_service("SharedSetService").shared_set_path(cid, sid)
+        camp_svc = self.gc.get_service("CampaignService")
+        ops = []
+        for i in new:
+            op = self.gc.get_type("CampaignSharedSetOperation")
+            op.create.campaign = camp_svc.campaign_path(cid, i)
+            op.create.shared_set = set_path
+            ops.append(op)
+        return self._finish(
+            cid=cid, action="attach_negative_list", target={"shared_set_id": sid, "nama": info.get("shared_set.name")},
+            before={"kampanye": sorted(attached)}, after={"ditambahkan": new},
+            service="CampaignSharedSetService", method="mutate_campaign_shared_sets", operations=ops,
+            confirm=confirm, notes=[f"{info.get('shared_set.member_count') or 0} kata kunci negatif akan berlaku di "
+                                    f"{len(new)} kampanye."],
+            verify=lambda: {"kampanye": sorted(self._attached(cid, sid))},
+        )
+
+    def detach_negative_list(self, cid: str, shared_set_id: str, campaign_ids: list[str], confirm: bool) -> dict:
+        sid = _digits(shared_set_id, "shared_set_id")
+        info = self._list_info(cid, sid)
+        ids = [_digits(i, "campaign_id") for i in campaign_ids]
+        attached = set(self._attached(cid, sid))
+        targets = [i for i in ids if i in attached]
+        if not targets:
+            return {"status": "TIDAK_ADA_PERUBAHAN", "pesan": "List tidak terpasang di kampanye tersebut."}
+        svc = self.gc.get_service("CampaignSharedSetService")
+        ops = []
+        for i in targets:
+            op = self.gc.get_type("CampaignSharedSetOperation")
+            op.remove = svc.campaign_shared_set_path(cid, i, sid)
+            ops.append(op)
+        return self._finish(
+            cid=cid, action="detach_negative_list", target={"shared_set_id": sid, "nama": info.get("shared_set.name")},
+            before={"kampanye": sorted(attached)}, after={"dilepas": targets},
+            service="CampaignSharedSetService", method="mutate_campaign_shared_sets", operations=ops,
+            confirm=confirm, verify=lambda: {"kampanye": sorted(self._attached(cid, sid))},
+        )
+
+    # ---------- Responsive Search Ads ----------
+
+    def _fill_assets(self, repeated, items: list[dict[str, Any]], pin_map: dict[int, str]) -> None:
+        for it in items:
+            asset = self.gc.get_type("AdTextAsset")
+            asset.text = it["text"]
+            if it.get("pin"):
+                asset.pinned_field = getattr(self.gc.enums.ServedAssetFieldTypeEnum, pin_map[it["pin"]])
+            repeated.append(asset)
+
+    def _ad_row(self, cid: str, ad_group_id: str, ad_id: str) -> dict[str, Any]:
+        rows = self.ads.search(cid, (
+            "SELECT ad_group_ad.ad.id, ad_group_ad.ad.type, ad_group_ad.status, ad_group_ad.ad_strength, "
+            "ad_group_ad.policy_summary.approval_status, ad_group_ad.ad.final_urls, "
+            "ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.ad.responsive_search_ad.descriptions, "
+            "ad_group_ad.ad.responsive_search_ad.path1, ad_group_ad.ad.responsive_search_ad.path2 "
+            f"FROM ad_group_ad WHERE ad_group.id = {ad_group_id} AND ad_group_ad.ad.id = {ad_id}"
+        ))
+        if not rows:
+            raise ValueError(f"Iklan {ad_id} di grup iklan {ad_group_id} tidak ditemukan.")
+        return rows[0]
+
+    def create_rsa(self, cid: str, ad_group_id: str, headlines: list, descriptions: list, final_urls: list[str],
+                   confirm: bool, path1: str | None = None, path2: str | None = None, paused: bool = True) -> dict:
+        ag = _digits(ad_group_id, "ad_group_id")
+        copy = rsa.validate(headlines, descriptions, path1, path2)
+        errors = copy.errors + rsa.validate_urls(final_urls)
+        if not final_urls:
+            errors.append("final_urls wajib diisi (minimal satu URL landing page).")
+        if errors:
+            raise ValueError("Teks iklan belum valid:\n- " + "\n- ".join(errors))
+        op = self.gc.get_type("AdGroupAdOperation")
+        aga = op.create
+        aga.ad_group = self.gc.get_service("AdGroupService").ad_group_path(cid, ag)
+        aga.status = self.gc.enums.AdGroupAdStatusEnum.PAUSED if paused else self.gc.enums.AdGroupAdStatusEnum.ENABLED
+        aga.ad.final_urls.extend(final_urls)
+        r = aga.ad.responsive_search_ad
+        self._fill_assets(r.headlines, copy.headlines, rsa.HEADLINE_PINS)
+        self._fill_assets(r.descriptions, copy.descriptions, rsa.DESC_PINS)
+        if copy.path1:
+            r.path1 = copy.path1
+        if copy.path2:
+            r.path2 = copy.path2
+        notes = list(copy.warnings) + ["Iklan baru ditinjau Google (biasanya < 1 hari, bisa sampai 48 jam)."]
+        if paused:
+            notes.append("Iklan dibuat DIJEDA. Aktifkan dengan set_status level='ad' setelah dicek.")
+        return self._finish(
+            cid=cid, action="create_rsa", target={"ad_group_id": ag}, before=None,
+            after={"headlines": copy.headlines, "descriptions": copy.descriptions, "final_urls": final_urls,
+                   "path1": copy.path1, "path2": copy.path2, "dijeda": paused},
+            service="AdGroupAdService", method="mutate_ad_group_ads", operations=[op], confirm=confirm, notes=notes,
+        )
+
+    def update_rsa(self, cid: str, ad_group_id: str, ad_id: str, confirm: bool,
+                   headlines: list | None = None, descriptions: list | None = None,
+                   final_urls: list[str] | None = None, path1: str | None = None, path2: str | None = None) -> dict:
+        ag, aid = _digits(ad_group_id, "ad_group_id"), _digits(ad_id, "ad_id")
+        before = self._ad_row(cid, ag, aid)
+        if before.get("ad_group_ad.ad.type") not in (None, "RESPONSIVE_SEARCH_AD"):
+            raise ValueError(f"Iklan {aid} bukan Responsive Search Ad ({before.get('ad_group_ad.ad.type')}).")
+        if headlines is None and descriptions is None and final_urls is None and path1 is None and path2 is None:
+            raise ValueError("Tidak ada yang diubah.")
+        copy = rsa.validate(headlines, descriptions, path1, path2, partial=True)
+        errors = copy.errors + rsa.validate_urls(final_urls)
+        if errors:
+            raise ValueError("Teks iklan belum valid:\n- " + "\n- ".join(errors))
+        op = self.gc.get_type("AdOperation")
+        ad = op.update
+        ad.resource_name = self.gc.get_service("AdService").ad_path(cid, aid)
+        after: dict[str, Any] = {}
+        if headlines is not None:
+            self._fill_assets(ad.responsive_search_ad.headlines, copy.headlines, rsa.HEADLINE_PINS)
+            op.update_mask.paths.append("responsive_search_ad.headlines")
+            after["headlines"] = copy.headlines
+        if descriptions is not None:
+            self._fill_assets(ad.responsive_search_ad.descriptions, copy.descriptions, rsa.DESC_PINS)
+            op.update_mask.paths.append("responsive_search_ad.descriptions")
+            after["descriptions"] = copy.descriptions
+        if path1 is not None:
+            ad.responsive_search_ad.path1 = copy.path1 or ""
+            op.update_mask.paths.append("responsive_search_ad.path1")
+            after["path1"] = copy.path1
+        if path2 is not None:
+            ad.responsive_search_ad.path2 = copy.path2 or ""
+            op.update_mask.paths.append("responsive_search_ad.path2")
+            after["path2"] = copy.path2
+        if final_urls is not None:
+            ad.final_urls.extend(final_urls)
+            op.update_mask.paths.append("final_urls")
+            after["final_urls"] = final_urls
+        notes = list(copy.warnings) + ["Iklan yang diubah ditinjau ulang Google (biasanya < 1 hari, bisa sampai 48 jam)."]
+        return self._finish(
+            cid=cid, action="update_rsa", target={"ad_group_id": ag, "ad_id": aid},
+            before={"headlines": before.get("ad_group_ad.ad.responsive_search_ad.headlines"),
+                    "descriptions": before.get("ad_group_ad.ad.responsive_search_ad.descriptions"),
+                    "final_urls": before.get("ad_group_ad.ad.final_urls"),
+                    "ad_strength": before.get("ad_group_ad.ad_strength")},
+            after=after, service="AdService", method="mutate_ads", operations=[op], confirm=confirm, notes=notes,
+            verify=lambda: {k.split(".")[-1]: v for k, v in self._ad_row(cid, ag, aid).items()
+                            if k.endswith(("headlines", "descriptions", "final_urls", "approval_status", "ad_strength"))},
         )

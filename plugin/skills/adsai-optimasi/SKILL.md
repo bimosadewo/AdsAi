@@ -30,6 +30,11 @@ menyetujui perubahan spesifik itu.
    - PHRASE untuk pola yang berulang; EXACT untuk satu istilah spesifik.
    - Jangan pernah memblokir kata produk klien atau kata niat beli (harga, jual, distributor, terdekat).
      Bila ragu, tanya pengguna dan tambahkan kata produk ke `protected_terms` di `clients.yaml`.
+   - **Kampanye vs shared list.** Kata yang tidak relevan untuk *semua* kampanye klien (kompetitor,
+     informasional seperti "beda/pengertian/pdf", bahasa Inggris umum) → masukkan ke shared list
+     (`list_negative_keyword_lists` → `add_negative_keywords_to_list`, atau buat "Negatif Umum" lalu
+     `attach_negative_keyword_list` ke semua kampanye Search). Kata yang hanya salah untuk satu kampanye
+     (mis. "geomembrane" di kampanye Plastik Cor) → `add_negative_keywords` level kampanye.
 2. **Jeda yang paling sempit**: kata kunci → grup iklan → kampanye (`set_status`).
 3. **Realokasi** dana yang dibebaskan ke kampanye dengan CPA terbukti.
 

@@ -10,7 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, gaql
+from . import analysis, gaql, rsa, structure
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
@@ -259,8 +259,9 @@ def update_budget(campaign_id: str, daily_budget: float, customer_id: str | None
 @write_tool
 def set_status(level: str, ids: list[str], status: str, customer_id: str | None = None,
                confirm: bool = False) -> dict:
-    """Jeda/aktifkan. level: campaign | ad_group | keyword. status: ENABLED | PAUSED.
-    Untuk keyword, id berformat 'ad_group_id~criterion_id'. Menghapus permanen tidak didukung."""
+    """Jeda/aktifkan. level: campaign | ad_group | keyword | ad. status: ENABLED | PAUSED.
+    keyword: id 'ad_group_id~criterion_id'; ad: id 'ad_group_id~ad_id' (lihat campaign_structure).
+    Menghapus permanen tidak didukung."""
     a = ads()
     return mutator().set_status(a.customer_id(customer_id), level, ids, status, confirm)
 
@@ -301,6 +302,150 @@ def change_log(customer_id: str | None = None, limit: int = 50) -> dict:
     a = ads()
     cid = a.customer_id(customer_id)
     return {"customer_id": cid, "perubahan": AuditLog(a.settings.safety.audit_log_dir).read(cid, limit)}
+
+
+# ---------------------------------------------------------------------------
+# Struktur kampanye & iklan
+# ---------------------------------------------------------------------------
+
+@tool
+def campaign_structure(campaign_id: str, customer_id: str | None = None, page: int = 1, page_size: int = 10,
+                       include: str = "all", ad_group_id: str | None = None) -> dict:
+    """Struktur satu kampanye: grup iklan, kata kunci (id 'ad_group_id~criterion_id', match type, QS),
+    iklan RSA (headline, deskripsi, ad strength, status persetujuan), ekstensi, negatif kampanye,
+    shared negative list — plus 'temuan' audit struktur otomatis.
+    Dibagi per halaman grup iklan: bila halaman.has_more=true, panggil lagi dengan page+1.
+    include: all | summary | keywords | ads. ad_group_id: lihat satu grup iklan saja."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    return {"customer_id": cid, **structure.fetch_structure(a, cid, campaign_id, page=page, page_size=page_size,
+                                                            include=include, ad_group_id=ad_group_id)}
+
+
+@tool
+def ad_performance(customer_id: str | None = None, campaign_id: str | None = None, ad_group_id: str | None = None,
+                   date_range: str = "LAST_30_DAYS", start: str | None = None, end: str | None = None,
+                   limit: int = 100) -> dict:
+    """Performa per iklan (biaya, klik, CTR, konversi, CPA, ad strength) — untuk menentukan iklan pemenang
+    dan yang perlu dijeda dalam satu grup iklan."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    q = structure.q_ad_performance(gaql.date_clause(date_range, start, end), campaign_id, ad_group_id)
+    rows = a.search(cid, f"{q} LIMIT {max(1, min(limit, 500))}")
+    return {"customer_id": cid, "ringkasan": gaql.summarize(rows), "iklan": rows}
+
+
+@tool
+def validate_ad_copy(headlines: list, descriptions: list, path1: str | None = None, path2: str | None = None,
+                     final_urls: list[str] | None = None) -> dict:
+    """Periksa teks RSA tanpa mengirim apa pun ke Google: jumlah & panjang (headline 3-15 ≤30, deskripsi 2-4 ≤90,
+    path ≤15), tanda seru, huruf kapital berlebihan, duplikat, pin, klaim superlatif. Item boleh string atau
+    {"text": "...", "pin": 1}. Pakai saat menyusun iklan sebelum create/update."""
+    copy = rsa.validate(headlines, descriptions, path1, path2)
+    out = copy.to_dict()
+    url_errors = rsa.validate_urls(final_urls)
+    out["error"] += url_errors
+    out["valid"] = out["valid"] and not url_errors
+    out["panjang"] = {"headlines": [len(h["text"]) for h in copy.headlines],
+                      "descriptions": [len(d["text"]) for d in copy.descriptions]}
+    return out
+
+
+@write_tool
+def create_responsive_search_ad(ad_group_id: str, headlines: list, descriptions: list, final_urls: list[str],
+                                customer_id: str | None = None, confirm: bool = False, path1: str | None = None,
+                                path2: str | None = None, paused: bool = True) -> dict:
+    """Buat Responsive Search Ad di grup iklan. headlines 3-15 (≤30 karakter), descriptions 2-4 (≤90),
+    item boleh {"text": "...", "pin": 1}. Default dibuat DIJEDA (paused=true); aktifkan lewat set_status level='ad'."""
+    a = ads()
+    return mutator().create_rsa(a.customer_id(customer_id), ad_group_id, headlines, descriptions, final_urls,
+                                confirm, path1, path2, paused)
+
+
+@write_tool
+def update_responsive_search_ad(ad_group_id: str, ad_id: str, customer_id: str | None = None, confirm: bool = False,
+                                headlines: list | None = None, descriptions: list | None = None,
+                                final_urls: list[str] | None = None, path1: str | None = None,
+                                path2: str | None = None) -> dict:
+    """Ubah RSA yang ada (ID dari campaign_structure). Bagian yang dikirim MENGGANTI seluruh daftar lama
+    (mis. headlines = daftar lengkap baru). Iklan akan ditinjau ulang Google."""
+    a = ads()
+    return mutator().update_rsa(a.customer_id(customer_id), ad_group_id, ad_id, confirm, headlines, descriptions,
+                                final_urls, path1, path2)
+
+
+# ---------------------------------------------------------------------------
+# Shared negative keyword list
+# ---------------------------------------------------------------------------
+
+@tool
+def list_negative_keyword_lists(customer_id: str | None = None) -> dict:
+    """Daftar shared negative keyword list akun: jumlah kata kunci dan jumlah kampanye yang memakainya."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    rows = a.search(cid, "SELECT shared_set.id, shared_set.name, shared_set.member_count, shared_set.reference_count, "
+                         "shared_set.status FROM shared_set WHERE shared_set.type = 'NEGATIVE_KEYWORDS' "
+                         "AND shared_set.status = 'ENABLED'")
+    return {"customer_id": cid, "list": [
+        {"id": r.get("shared_set.id"), "nama": r.get("shared_set.name"), "jumlah_kata_kunci": r.get("shared_set.member_count"),
+         "dipakai_kampanye": r.get("shared_set.reference_count")} for r in rows]}
+
+
+@tool
+def get_negative_keyword_list(shared_set_id: str, customer_id: str | None = None, query: str | None = None) -> dict:
+    """Isi satu shared negative keyword list (teks + match type) dan kampanye yang memakainya.
+    query: saring teks kata kunci."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    m = mutator()
+    items = [{"text": r.get("shared_criterion.keyword.text"), "match_type": r.get("shared_criterion.keyword.match_type")}
+             for r in m.list_items(cid, shared_set_id)]
+    if query:
+        items = [i for i in items if query.lower() in (i["text"] or "").lower()]
+    return {"customer_id": cid, "shared_set_id": shared_set_id, "jumlah": len(items),
+            "kata_kunci": sorted(items, key=lambda i: i["text"] or ""),
+            "kampanye": m._attached(cid, str(int(shared_set_id)))}
+
+
+@write_tool
+def create_negative_keyword_list(name: str, customer_id: str | None = None, confirm: bool = False) -> dict:
+    """Buat shared negative keyword list kosong (mis. 'Kompetitor', 'Informasional'). Isi dengan
+    add_negative_keywords_to_list, pasang dengan attach_negative_keyword_list."""
+    a = ads()
+    return mutator().create_negative_list(a.customer_id(customer_id), name, confirm)
+
+
+@write_tool
+def add_negative_keywords_to_list(shared_set_id: str, keywords: list[dict], customer_id: str | None = None,
+                                  confirm: bool = False) -> dict:
+    """Tambah kata kunci negatif ke shared list — berlaku di semua kampanye yang memakai list itu.
+    keywords: [{"text": "...", "match_type": "PHRASE|EXACT|BROAD"}]. Duplikat dilewati."""
+    a = ads()
+    return mutator().add_to_negative_list(a.customer_id(customer_id), shared_set_id, keywords, confirm)
+
+
+@write_tool
+def remove_negative_keywords_from_list(shared_set_id: str, texts: list[str], customer_id: str | None = None,
+                                       confirm: bool = False) -> dict:
+    """Hapus kata kunci dari shared negative list berdasarkan teksnya."""
+    a = ads()
+    return mutator().remove_from_negative_list(a.customer_id(customer_id), shared_set_id, texts, confirm)
+
+
+@write_tool
+def attach_negative_keyword_list(shared_set_id: str, campaign_ids: list[str], customer_id: str | None = None,
+                                 confirm: bool = False) -> dict:
+    """Pasang shared negative list ke satu atau beberapa kampanye (yang sudah terpasang dilewati)."""
+    a = ads()
+    return mutator().attach_negative_list(a.customer_id(customer_id), shared_set_id, campaign_ids, confirm)
+
+
+@write_tool
+def detach_negative_keyword_list(shared_set_id: str, campaign_ids: list[str], customer_id: str | None = None,
+                                 confirm: bool = False) -> dict:
+    """Lepas shared negative list dari kampanye (list dan isinya tetap ada)."""
+    a = ads()
+    return mutator().detach_negative_list(a.customer_id(customer_id), shared_set_id, campaign_ids, confirm)
 
 
 # ---------------------------------------------------------------------------

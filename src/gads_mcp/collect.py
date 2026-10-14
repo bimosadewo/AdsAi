@@ -46,6 +46,9 @@ def q_campaign_impressions(start: str, end: str) -> str:
 
 Q_ENABLED = ("SELECT campaign.id, campaign.name, campaign.primary_status, campaign.primary_status_reasons "
              "FROM campaign WHERE campaign.status = 'ENABLED' AND campaign.serving_status = 'SERVING'")
+Q_DISAPPROVED = ("SELECT campaign.name, ad_group.name, ad_group_ad.ad.id FROM ad_group_ad "
+                 "WHERE campaign.status = 'ENABLED' AND ad_group.status = 'ENABLED' "
+                 "AND ad_group_ad.status = 'ENABLED' AND ad_group_ad.policy_summary.approval_status = 'DISAPPROVED'")
 Q_NEGATIVES = ("SELECT campaign_criterion.keyword.text FROM campaign_criterion "
                "WHERE campaign_criterion.negative = TRUE AND campaign_criterion.type = 'KEYWORD' "
                "AND campaign.status != 'REMOVED'")
@@ -87,6 +90,11 @@ def collect_snapshot(ads: Searcher, client: Any, today: date | None = None,
         for c in ads.search(cid, Q_ENABLED) if imp.get(c["campaign.id"], 0) == 0
     ]
 
+    disapproved = [
+        {"kampanye": r.get("campaign.name"), "grup": r.get("ad_group.name"), "ad_id": r.get("ad_group_ad.ad.id")}
+        for r in ads.search(cid, Q_DISAPPROVED)
+    ]
+
     conv = ads.search(cid, gaql.q_conversion_actions())
     n_primary = sum(1 for r in conv if r.get("conversion_action.primary_for_goal"))
 
@@ -119,6 +127,7 @@ def collect_snapshot(ads: Searcher, client: Any, today: date | None = None,
         "harian": daily,
         "kampanye_aktif_tidak_tayang": not_serving,
         "jumlah_konversi_utama": n_primary,
+        "iklan_ditolak": disapproved,
         "impor_offline_bermasalah": upload_issues,
         "pacing": pacing,
     }

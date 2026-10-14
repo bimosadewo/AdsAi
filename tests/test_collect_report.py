@@ -43,6 +43,8 @@ class FakeSearch:
             return [{"campaign.id": "1", "campaign.name": "Lead-Search"},
                     {"campaign.id": "3", "campaign.name": "Geotextile Lama",
                      "campaign.primary_status_reasons": ["BUDGET_CONSTRAINED"]}]
+        if "approval_status = 'DISAPPROVED'" in q:
+            return [{"campaign.name": "Lead-Search", "ad_group.name": "Geotextile", "ad_group_ad.ad.id": "9"}]
         if "FROM conversion_action" in q:
             return [{"conversion_action.primary_for_goal": True}] * 5
         if "offline_conversion_upload_client_summary" in q:
@@ -73,7 +75,8 @@ def test_snapshot_alerts_and_report(tmp_path):
 
     alerts = evaluate_alerts(snap, CLIENT)
     codes = {a.kode for a in alerts}
-    assert {"TIDAK_TAYANG", "KONVERSI_NOL", "CPA_NAIK", "KONVERSI_UTAMA_BERLEBIH", "IMPOR_GAGAL"} <= codes
+    assert {"TIDAK_TAYANG", "KONVERSI_NOL", "CPA_NAIK", "KONVERSI_UTAMA_BERLEBIH", "IMPOR_GAGAL",
+            "IKLAN_DITOLAK"} <= codes
 
     audit = AuditLog(tmp_path)
     audit.write(CLIENT.customer_id, "update_budget", {"kampanye": "Lead-Search"},

@@ -59,10 +59,10 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 
 | Prioritas | Fitur |
 |---|---|
-| Tinggi | Shared negative keyword list (satu daftar untuk banyak kampanye) |
-| Tinggi | `campaign_structure`: grup iklan, iklan, ekstensi dalam satu panggilan |
-| Tinggi | Iklan RSA: baca, buat, ubah headline/deskripsi |
-| Sedang | Ekstensi (sitelink, callout, snippet, telepon) |
+| ✅ Selesai | Shared negative keyword list (7 tools) |
+| ✅ Selesai | `campaign_structure` + audit struktur |
+| ✅ Selesai | Iklan RSA: validasi, buat (dijeda), ubah, performa per iklan, status per iklan |
+| Sedang | Membuat/mengubah ekstensi (sitelink, callout, snippet, telepon) — audit sudah ada |
 | Sedang | Keyword research (Keyword Planner), jadwal iklan, lokasi, perangkat |
 | Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
 | Rendah | Membuat kampanye baru (Model A: tim membuat di UI) |

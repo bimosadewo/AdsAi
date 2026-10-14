@@ -75,10 +75,10 @@ Web app adspirer.ai ── sambungkan akun iklan, dashboard, monitor server-side
 |---|---|---|---|
 | Performa, search terms, kata kunci, konversi | ✅ | ✅ | — |
 | Negatif kampanye, budget, status, bidding, konversi | ✅ | ✅ (+ pratinjau, batas budget, log audit) | — |
-| **Shared negative keyword list** | ✅ | ❌ | **Tinggi** — hemat kerja lintas kampanye |
-| **Struktur kampanye** (`get_campaign_structure`: grup iklan, iklan, ekstensi) | ✅ | Sebagian (`run_query`) | **Tinggi** |
-| **Iklan RSA**: baca/buat/ubah headline & deskripsi | ✅ | ❌ | Tinggi |
-| **Ekstensi**: sitelink, callout, snippet, call | ✅ | ❌ | Sedang — Adspirer: wajib ≥4 sitelink, 4–6 callout |
+| **Shared negative keyword list** | ✅ | ✅ (+ dedup, cek tipe list, info jumlah kampanye terdampak) | — |
+| **Struktur kampanye** (`get_campaign_structure`) | ✅ | ✅ `campaign_structure` (+ temuan audit struktur otomatis) | — |
+| **Iklan RSA**: baca/buat/ubah, performa per iklan | ✅ | ✅ (+ `validate_ad_copy` tanpa API, pin, cek superlatif Bahasa Indonesia, dibuat dijeda) | — |
+| **Ekstensi**: sitelink, callout, snippet, call | ✅ | Baca + audit (≥4 sitelink, 4–6 callout); buat/ubah belum | Sedang |
 | Keyword research (Keyword Planner) | ✅ | ❌ | Sedang |
 | Jadwal iklan, lokasi, perangkat | ✅ | ❌ | Sedang |
 | Buat kampanye Search/PMax/Demand Gen/Video/Display | ✅ | ❌ | Rendah untuk Model A (tim buat di UI) |
@@ -96,8 +96,22 @@ Web app adspirer.ai ── sambungkan akun iklan, dashboard, monitor server-side
   30 hari < 30.
 - **Catatan pacing**: Google boleh belanja hingga 2× budget harian per hari.
 
+### Putaran 2 (shared list, struktur, RSA)
+
+Dipelajari dari skema tool Adspirer (dibaca gratis via `get_tool_schema`) dan skill `adspirer-creative`:
+- Struktur kampanye dibagi per halaman grup iklan + ringkasan total + opsi satu grup iklan → diadopsi.
+- Performa per iklan dengan ad strength untuk memilih pemenang → `ad_performance`.
+- Aturan teks RSA: tanpa "!", tanpa superlatif tanpa bukti, 3–15 headline ≤30, 2–4 deskripsi ≤90 →
+  `rsa.validate` (+ versi Bahasa Indonesia: terbaik, nomor 1, termurah, terlengkap).
+- Prinsip menulis iklan: tulis dari search terms nyata, satu ide per headline, spesifik > kata sifat,
+  variasikan sudut pandang → skill `adsai-iklan`.
+- Ekstensi wajib untuk Search: ≥4 sitelink, 4–6 callout, 1 snippet → temuan audit di `campaign_structure`.
+- Peningkatan AdsAi di luar Adspirer: alert `IKLAN_DITOLAK` di `client_health`/laporan; iklan baru
+  dibuat **dijeda** dan diaktifkan lewat `set_status level="ad"`.
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
 |---|---|---|
 | 2026-10-14 | Audit konversi, list kampanye & konversi, 2× negatif, 3× ubah kampanye, 6× ubah konversi | Lihat §3 |
+| 2026-10-14 | `search_tools` (gratis) + `get_tool_schema` 12 tool: shared list, struktur, RSA, performa iklan | Lihat §5 putaran 2 — tidak memakai kuota |

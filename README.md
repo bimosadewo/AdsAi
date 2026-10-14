@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (48 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (63 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (24)
+## Tools MCP (36)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -48,11 +48,28 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 |---|---|
 | `add_negative_keywords` / `remove_negative_keywords` | Kata kunci negatif kampanye (duplikat otomatis dilewati) |
 | `update_budget` | Budget harian (dibatasi batas maksimum & kenaikan maks per perubahan) |
-| `set_status` | Jeda / aktifkan kampanye, grup iklan, kata kunci |
+| `set_status` | Jeda / aktifkan kampanye, grup iklan, kata kunci, iklan |
 | `update_conversion_action` | Utama/Sekunder, cara hitung, jangka waktu, status |
 | `update_bid_strategy` | Maks. konversi (± target CPA), maks. klik (± CPC maks), CPC manual |
 | `add_keywords` | Tambah kata kunci ke grup iklan |
 | `change_log` | Riwayat perubahan lewat AdsAi |
+
+**Struktur & iklan**
+| Tool | Fungsi |
+|---|---|
+| `campaign_structure` | Grup iklan, kata kunci, iklan RSA, ekstensi, negatif, shared list + **temuan audit struktur** (ekstensi kurang, ad strength lemah, iklan ditolak, grup iklan terlalu gemuk, QS rendah). Per halaman |
+| `ad_performance` | Performa per iklan untuk memilih pemenang |
+| `validate_ad_copy` | Cek teks RSA tanpa API: panjang, jumlah, tanda seru, kapital, duplikat, pin, klaim superlatif |
+| `create_responsive_search_ad` | Buat RSA (default **dijeda**) |
+| `update_responsive_search_ad` | Ubah headline/deskripsi/URL/path RSA |
+
+**Shared negative keyword list**
+| Tool | Fungsi |
+|---|---|
+| `list_negative_keyword_lists` / `get_negative_keyword_list` | Daftar list & isinya + kampanye pemakai |
+| `create_negative_keyword_list` | Buat list baru |
+| `add_negative_keywords_to_list` / `remove_negative_keywords_from_list` | Isi / kurangi list (berlaku di semua kampanye pemakai) |
+| `attach_negative_keyword_list` / `detach_negative_keyword_list` | Pasang / lepas list dari kampanye |
 
 **Klien & laporan (Fase 3)**
 | Tool | Fungsi |
@@ -90,7 +107,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 48 tes
+   pytest                           # opsional: 63 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -136,7 +153,8 @@ dalam Bahasa Indonesia — pelajaran utama dari Adspirer (lihat [NOTICE](NOTICE)
 |---|---|
 | `skills/adsai-agent` | Kontrak keamanan, cara memakai tools, peta tool |
 | `skills/adsai-review` | Review performa & laporan klien (baca-saja) |
-| `skills/adsai-optimasi` | Potong pemborosan, negatif, realokasi, pacing |
+| `skills/adsai-optimasi` | Potong pemborosan, negatif (kampanye vs shared list), realokasi, pacing |
+| `skills/adsai-iklan` | Menulis & memperbaiki RSA dari search terms nyata, validasi, buat/ubah |
 | `commands/audit.md`, `commands/mingguan.md` | Perintah `/audit <klien>` dan `/mingguan <klien>` |
 
 - **Claude Code**: `claude --plugin-dir ./plugin` (atau salin `plugin/skills/*` ke `~/.claude/skills/`).
@@ -167,9 +185,11 @@ src/gads_mcp/
   clients.py    clients.yaml
   collect.py    snapshot data per klien
   analysis.py   n-gram, usulan negatif, anomali, pacing, aturan alert
+  structure.py  struktur kampanye + audit struktur
+  rsa.py        validasi teks Responsive Search Ad
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     24 tools MCP
+  server.py     36 tools MCP
   cli.py        perintah `adsai`
 ```
