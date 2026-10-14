@@ -64,6 +64,7 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | ✅ Selesai | Iklan RSA: validasi, buat (dijeda), ubah, performa per iklan, status per iklan |
 | ✅ Selesai | Ekstensi: sitelink, callout, snippet, telepon — tambah, ubah (atomik), jeda, lepas (8 tools) |
 | ✅ Selesai | Pengaturan kampanye & targeting: jaringan, AI Max, mode lokasi, lokasi/radius, jadwal, perangkat (8 tools) |
+| ✅ Selesai | Kit dossier klien untuk agen AI (setara "Expert Space" Adspirer) |
 | Sedang | Keyword research (Keyword Planner) |
 | Sedang | Performance Max: asset group, search themes, sinyal audiens, search terms PMax |
 | Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
@@ -75,3 +76,4 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | Monitoring | Alert harian WA + laporan mingguan |
 | Kelola | Monitoring + optimasi mingguan oleh tim (negative keyword, bid, budget) |
 | Kelola+ | Kelola + audit konversi/CRM dan rapat bulanan |
+| Add-on | "Project AI" klien: kit dossier diperbarui bulanan, klien bisa bertanya ke Claude tentang iklannya |

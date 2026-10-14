@@ -141,6 +141,20 @@ Dari skema `get_campaign_targeting`, `update_campaign`, `update_location_targeti
   perangkat/jadwal/lokasi kecuali -100%; penolakan menghapus semua target lokasi (iklan jadi tayang ke seluruh
   dunia) dan menolak -100% di semua perangkat.
 
+### Putaran 5 ("Expert Space", dari screenshot web app adspirer.ai)
+
+- Produk berbayar terpisah: **"expert kit" $39 sekali bayar per akun iklan**, "free refreshes, on demand",
+  dipakai di Claude, ChatGPT, Claude Code, Cursor.
+- Isi kit: Agent Skill (`SKILL.md` + `references/` + `PROMPTBOOK.md` + `AGENT_INSTRUCTIONS.md` + `AGENTS.md`) —
+  "durable expertise plus a dossier of this account's state"; prompt bertingkat Beginner → Expert;
+  instruksi project siap tempel yang mengunci akun + guardrail.
+- Untuk Tiga Pilar halaman menyebut "2 campaigns, 1 month of history" — kemungkinan hanya kampanye/data
+  terbaru yang dihitung.
+- **Pelajaran:** nilai jual bukan hanya tools, tapi *konteks akun yang dikemas* agar AI langsung paham akun.
+- **Diterapkan:** `client_dossier` / `adsai dossier` — kit setara, otomatis dari data 90 hari, gratis untuk semua
+  klien, berbahasa Indonesia, dengan kandidat negatif yang sudah melewati filter pengaman dan tanpa kontak klien.
+  Bisa dijadikan deliverable paket jasa ("Project AI khusus untuk bisnis Anda").
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
@@ -149,3 +163,4 @@ Dari skema `get_campaign_targeting`, `update_campaign`, `update_location_targeti
 | 2026-10-14 | `search_tools` (gratis) + `get_tool_schema` 12 tool: shared list, struktur, RSA, performa iklan | Lihat §5 putaran 2 — tidak memakai kuota |
 | 2026-10-14 | `get_tool_schema` 8 tool ekstensi + skill `extensions.md` | Lihat §5 putaran 3 — tidak memakai kuota |
 | 2026-10-14 | `get_tool_schema` 7 tool targeting | Lihat §5 putaran 4 — tidak memakai kuota |
+| 2026-10-14 | Screenshot halaman Expert Space (adspirer.ai) dari pengguna | Lihat §5 putaran 5 |

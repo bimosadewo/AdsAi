@@ -10,6 +10,8 @@
 5. Di Claude: *"client_health untuk <klien>"* → audit awal. Biasanya temuan pertama:
    konversi Utama terlalu banyak, kampanye tidak tayang, search terms boros.
 6. Kontrak jasa: pastikan ada klausul izin akses akun iklan & penggunaan data (UU PDP).
+7. `adsai dossier --client <klien>` → buat Claude Project per klien: tempel `AGENT_INSTRUCTIONS.md` ke
+   Project instructions dan unggah `SKILL.md` + `PROMPTBOOK.md` sebagai pengetahuan project.
 
 ## Rutinitas
 
@@ -22,6 +24,7 @@
 | Senin | Tim | `budget_pacing` → sesuaikan budget bila BOROS/KURANG (`update_budget`) |
 | Senin 10:00 | Otomatis | `adsai report --send` → laporan mingguan ke semua klien aktif |
 | Awal bulan | Tim | Review `change_log` per klien untuk laporan bulanan |
+| Awal bulan | Otomatis/Tim | `adsai dossier` → perbarui kit dossier semua klien, unggah ulang ke Project masing-masing |
 
 Laporan mingguan otomatis mencantumkan **"Yang dikerjakan tim minggu ini"** dari log audit —
 jadi optimasi di hari Senin pagi ikut tampil di laporan Senin siang.

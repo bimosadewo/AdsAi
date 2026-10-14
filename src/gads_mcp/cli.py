@@ -6,6 +6,7 @@ Contoh:
     adsai alerts --send              # kirim alert ke klien yang punya masalah
     adsai report --client tigapilar  # pratinjau laporan mingguan
     adsai report --send              # kirim laporan mingguan ke semua klien aktif
+    adsai dossier --client tigapilar # perbarui kit dossier klien untuk agen AI
 
 Kode keluar: 0 = aman, 2 = ada alert KRITIS, 1 = error.
 """
@@ -22,7 +23,7 @@ from dotenv import load_dotenv
 
 from .clients import load_clients
 from .config import PROJECT_ROOT, find_env_file
-from .service import Context, alerts_message, build_weekly_report, client_alerts, send_message
+from .service import Context, alerts_message, build_dossier, build_weekly_report, client_alerts, send_message
 
 
 def _print_results(results: list[dict]) -> None:
@@ -77,6 +78,21 @@ def cmd_report(ctx: Context, args) -> int:
     return code
 
 
+def cmd_dossier(ctx: Context, args) -> int:
+    code = 0
+    for client in ctx.active_clients(args.client):
+        try:
+            result = build_dossier(ctx, client, out_dir=args.out)
+        except Exception as ex:
+            print(f"[{client.key}] GAGAL: {ex}", file=sys.stderr)
+            code = 1
+            continue
+        print(f"[{client.key}] dossier diperbarui:")
+        for path in result["disimpan_di"]:
+            print(f"  {path}")
+    return code
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="adsai", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -90,6 +106,9 @@ def main(argv: list[str] | None = None) -> int:
     p_report.add_argument("--send", action="store_true", help="Kirim ke kontak klien")
     p_report.add_argument("--format", choices=["whatsapp", "markdown"], default="whatsapp")
     p_report.add_argument("--json", action="store_true", help="Cetak JSON (teks + alert)")
+    p_dossier = sub.add_parser("dossier", help="Buat/perbarui kit dossier klien untuk agen AI")
+    p_dossier.add_argument("--client")
+    p_dossier.add_argument("--out", help="Folder tujuan (default: ./dossiers)")
     args = parser.parse_args(argv)
 
     if args.cmd == "clients":
@@ -103,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as ex:
         print(f"Error: {ex}", file=sys.stderr)
         return 1
-    return {"alerts": cmd_alerts, "report": cmd_report}[args.cmd](ctx, args)
+    return {"alerts": cmd_alerts, "report": cmd_report, "dossier": cmd_dossier}[args.cmd](ctx, args)
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from .collect import collect_snapshot, daily_rows, q_daily, today_local
 from .config import load_settings
 from .mutations import Mutator
 from .safety import AuditLog
-from .service import Context, alerts_message, build_weekly_report, send_message
+from .service import Context, alerts_message, build_dossier, build_weekly_report, send_message
 
 INSTRUCTIONS = """\
 Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
@@ -688,6 +688,16 @@ def weekly_report(client: str, fmt: str = "whatsapp") -> dict:
     c = ctx()
     report = build_weekly_report(c, c.client(client), fmt)
     return {"klien": report["klien"], "teks": report["teks"], "alert": report["alert"]}
+
+
+@tool
+def client_dossier(client: str, write: bool = True) -> dict:
+    """Buat/perbarui kit dossier klien untuk agen AI: SKILL.md (profil akun, target, kampanye aktif, konversi,
+    pola search terms, temuan, aturan main), PROMPTBOOK.md (prompt Pemula→Ahli), AGENT_INSTRUCTIONS.md (siap
+    tempel ke Claude/ChatGPT Project), AGENTS.md (Claude Code/Cursor). Data 90 hari terakhir. Tidak mengubah akun;
+    write=true menyimpan ke folder dossiers/<klien>/. Kontak klien tidak dimasukkan."""
+    c = ctx()
+    return build_dossier(c, c.client(client), write=write)
 
 
 @write_tool

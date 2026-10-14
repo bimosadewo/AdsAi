@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (85 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (87 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (52)
+## Tools MCP (53)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -98,6 +98,7 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `client_health` | Alert satu/semua klien + pesan WA siap kirim |
 | `weekly_report` | Laporan mingguan (pratinjau) |
 | `send_to_client` | Kirim pesan ke WA/email klien (pratinjau dulu, lalu `confirm=true`) |
+| `client_dossier` | **Kit dossier klien untuk agen AI**: SKILL.md, PROMPTBOOK.md, AGENT_INSTRUCTIONS.md, AGENTS.md (lihat di bawah) |
 
 **Analisa (Fase 4)**
 | Tool | Fungsi |
@@ -115,6 +116,7 @@ adsai alerts                       # cek semua klien aktif
 adsai alerts --send --critical-only  # kirim WA hanya bila ada masalah KRITIS
 adsai report --client tigapilar    # pratinjau laporan mingguan
 adsai report --send                # kirim laporan mingguan ke semua klien aktif
+adsai dossier --client tigapilar   # buat/perbarui kit dossier klien (dossiers/tigapilar/)
 ```
 Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarankan ada di
 [docs/OPERASIONAL.md](docs/OPERASIONAL.md).
@@ -127,7 +129,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 85 tes
+   pytest                           # opsional: 87 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -163,6 +165,20 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
 > *"Pakai google-ads: client_health untuk semua klien."*
 
 Claude Code: `claude mcp add google-ads -- /path/ke/AdsAi/.venv/bin/google-ads-mcp`
+
+## Kit dossier klien
+
+Terinspirasi "Expert Space" Adspirer (kit berbayar per akun). AdsAi membuatnya otomatis dari data 90 hari,
+gratis, untuk semua klien, dan bisa diperbarui kapan saja (`adsai dossier` / tool `client_dossier`):
+
+| Berkas | Isi |
+|---|---|
+| `SKILL.md` | Profil akun: target, produk dilindungi, ringkasan 90 hari & 7 hari, kampanye aktif + flag pengaturan, konversi Utama, pencarian pemenang, kandidat negatif aman, temuan terkini, aturan main |
+| `PROMPTBOOK.md` | 12+ prompt siap pakai Pemula → Menengah → Ahli, disesuaikan dengan nama klien & kampanye |
+| `AGENT_INSTRUCTIONS.md` | Instruksi siap tempel untuk Claude/ChatGPT Project |
+| `AGENTS.md` | Instruksi untuk Claude Code / Cursor / Codex |
+
+Disimpan di `dossiers/<klien>/` (di-`.gitignore`). Kontak klien tidak dimasukkan.
 
 ## Plugin skill (`plugin/`)
 
@@ -209,9 +225,10 @@ src/gads_mcp/
   rsa.py        validasi teks Responsive Search Ad
   extensions.py ekstensi: validasi + tambah/ubah/jeda/lepas (atomik)
   targeting.py  pengaturan kampanye & targeting + audit
+  dossier.py    kit dossier klien untuk agen AI
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     52 tools MCP
+  server.py     53 tools MCP
   cli.py        perintah `adsai`
 ```

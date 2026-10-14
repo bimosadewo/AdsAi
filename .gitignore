@@ -11,3 +11,4 @@ venv/
 *.egg-info/
 logs/
 clients.yaml
+dossiers/
