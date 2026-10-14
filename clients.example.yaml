@@ -1,0 +1,41 @@
+# Salin menjadi clients.yaml (sudah di-.gitignore karena berisi kontak klien).
+# Satu blok per klien. Key (mis. "tigapilar") dipakai di perintah: adsai report --client tigapilar
+
+defaults:
+  thresholds:
+    zero_conversion_days: 3     # alert bila 3 hari berturut-turut ada biaya tapi 0 konversi
+    cpa_increase_pct: 50        # alert bila CPA minggu ini naik >50% dari minggu lalu
+    anomaly_z: 2.5              # sensitivitas deteksi lonjakan/penurunan harian
+    min_waste_cost: 20000       # istilah tanpa konversi dengan biaya >= ini diusulkan jadi negatif
+
+clients:
+  tigapilar:
+    name: PT Tiga Pilar
+    customer_id: 582-757-2362
+    whatsapp: ["081200000000"]          # GANTI: penerima laporan & alert (boleh lebih dari satu)
+    email: ["owner@contoh.co.id"]
+    target_cpa: 15000                   # target biaya per lead (Rp)
+    monthly_budget: 3000000             # budget iklan bulanan yang disepakati (Rp)
+    protected_terms:                    # kata yang TIDAK boleh diusulkan jadi negatif (produk sendiri)
+      - geotextile
+      - geotekstil
+      - geomembrane
+      - woven
+      - non woven
+      - nonwoven
+      - hdpe
+      - plastik cor
+      - geocell
+      - geobag
+      - geogrid
+      - geomat
+      - tiga pilar
+
+  # contoh klien lain:
+  # habibaqiqah:
+  #   name: Habib Aqiqah
+  #   customer_id: 000-000-0000
+  #   whatsapp: ["081300000000"]
+  #   target_cpa: 25000
+  #   monthly_budget: 2000000
+  #   active: false

@@ -21,17 +21,20 @@ Konsekuensi:
 
 ## Fase
 
+Kode Fase 1–4 selesai dan dites dengan simulasi Google Ads. Setelah Fase 0 selesai, cukup isi `.env`.
+SOP harian/mingguan tim: [OPERASIONAL.md](OPERASIONAL.md).
+
 | Fase | Isi | Nilai jual | Status |
 |---|---|---|---|
-| 0 | Akses: MCC, developer token, Basic Access, OAuth | — | 📋 [Panduan](FASE-0-AKSES.md) |
+| 0 | Akses: MCC, developer token, Basic Access, OAuth | — | 📋 Menunggu pemilik/Google — [Panduan](FASE-0-AKSES.md) |
 | 1 | MVP baca-saja (8 tools) | Audit cepat tanpa download CSV | ✅ |
-| 2 | Tools tulis + pengaman | Tim bisa mengeksekusi optimasi dari Claude | ⏳ Berikutnya |
-| 3 | Daftar klien, laporan mingguan otomatis, alert harian | **Produk yang dijual ke klien** | ⏳ |
-| 4 | Analisa lanjutan (n-gram search terms, anomali, pacing) | Kualitas rekomendasi | ⏳ |
-| 5 | (Model B) Server online, login klien, paket & pembayaran | SaaS | 🅿️ Ditunda |
+| 2 | Tools tulis + pengaman | Tim bisa mengeksekusi optimasi dari Claude | ✅ |
+| 3 | Daftar klien, laporan mingguan otomatis, alert harian | **Produk yang dijual ke klien** | ✅ |
+| 4 | Analisa lanjutan (n-gram search terms, anomali, pacing) | Kualitas rekomendasi | ✅ |
+| 5 | (Model B) Server online, login klien, paket & pembayaran | SaaS | 🅿️ Ditunda — [rancangan](FASE-5-SAAS.md) |
 
 ### Fase 2 — Tools tulis + pengaman
-- `add_negative_keywords`, `remove_negative_keywords` (kampanye & shared list)
+- `add_negative_keywords`, `remove_negative_keywords` (level kampanye; shared list menyusul bila dibutuhkan)
 - `update_budget`, `set_status` (kampanye / grup iklan / kata kunci)
 - `update_conversion_action` (Utama/Sekunder, jangka waktu, cara hitung)
 - `update_bid_strategy`, `add_keywords`

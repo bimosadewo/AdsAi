@@ -90,7 +90,7 @@ class Settings:
         return cfg
 
 
-def _find_env_file() -> Path | None:
+def find_env_file() -> Path | None:
     """Urutan: GOOGLE_ADS_ENV_FILE, .env di folder kerja, .env di root proyek."""
     explicit = os.getenv("GOOGLE_ADS_ENV_FILE")
     if explicit:
@@ -102,7 +102,7 @@ def _find_env_file() -> Path | None:
 
 
 def load_settings() -> Settings:
-    load_dotenv(_find_env_file())
+    load_dotenv(find_env_file())
     missing = [k for k in REQUIRED if not os.getenv(k)]
     if missing:
         raise RuntimeError(

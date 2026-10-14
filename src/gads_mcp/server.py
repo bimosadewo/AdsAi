@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import functools
+from datetime import timedelta
 from typing import Any, Callable
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import gaql
+from . import analysis, gaql
 from .client import Ads, AdsError
+from .clients import find_client, load_clients
+from .collect import collect_snapshot, daily_rows, q_daily, today_local
 from .config import load_settings
 from .mutations import Mutator
 from .safety import AuditLog
+from .service import Context, alerts_message, build_weekly_report, send_message
 
 INSTRUCTIONS = """\
 Server ini membaca dan mengelola akun Google Ads klien agensi.
@@ -293,6 +297,140 @@ def change_log(customer_id: str | None = None, limit: int = 50) -> dict:
     a = ads()
     cid = a.customer_id(customer_id)
     return {"customer_id": cid, "perubahan": AuditLog(a.settings.safety.audit_log_dir).read(cid, limit)}
+
+
+# ---------------------------------------------------------------------------
+# Fase 3 — klien, kesehatan akun, laporan, pengiriman
+# ---------------------------------------------------------------------------
+
+def ctx() -> Context:
+    a = ads()
+    return Context(a.settings, a, load_clients(a.settings.clients_file), AuditLog(a.settings.safety.audit_log_dir))
+
+
+@tool
+def list_clients() -> dict:
+    """Daftar klien agensi dari clients.yaml (nama, customer ID, kontak, target CPA, budget bulanan)."""
+    a = ads()
+    return {"klien": [c.to_dict() for c in load_clients(a.settings.clients_file).values()]}
+
+
+@tool
+def client_health(client: str | None = None) -> dict:
+    """Cek kesehatan akun satu klien (key/nama/customer ID) atau semua klien aktif: tidak tayang, konversi nol,
+    anomali harian, CPA naik, pacing budget, konversi Utama berlebih, impor offline gagal."""
+    c = ctx()
+    out = []
+    for cl in c.active_clients(client):
+        try:
+            snap = collect_snapshot(c.ads, cl, with_search_terms=False)
+            alerts = analysis.evaluate_alerts(snap, cl)
+            out.append({"klien": cl.name, "customer_id": cl.customer_id,
+                        "alert": [x.to_dict() for x in alerts],
+                        "minggu_ini": snap["minggu_ini"], "minggu_lalu": snap["minggu_lalu"],
+                        "pacing": snap["pacing"], "pesan_wa": alerts_message(cl, alerts)})
+        except (AdsError, ValueError) as ex:
+            out.append({"klien": cl.name, "error": str(ex)})
+    return {"hasil": out}
+
+
+@tool
+def weekly_report(client: str, fmt: str = "whatsapp") -> dict:
+    """Buat laporan mingguan (7 hari terakhir vs minggu sebelumnya) untuk satu klien. Hanya pratinjau,
+    tidak mengirim apa pun. fmt: whatsapp | markdown."""
+    c = ctx()
+    report = build_weekly_report(c, c.client(client), fmt)
+    return {"klien": report["klien"], "teks": report["teks"], "alert": report["alert"]}
+
+
+@write_tool
+def send_to_client(client: str, message: str, subject: str = "Laporan Google Ads", confirm: bool = False) -> dict:
+    """Kirim pesan (mis. teks dari weekly_report) ke WhatsApp/email klien sesuai clients.yaml.
+    confirm=false: tampilkan siapa penerimanya tanpa mengirim. confirm=true: kirim sungguhan.
+    Selalu tunjukkan isi pesan dan penerima ke pengguna sebelum confirm=true."""
+    c = ctx()
+    cl = c.client(client)
+    if not confirm:
+        return {"status": "PRATINJAU", "klien": cl.name, "whatsapp": list(cl.whatsapp), "email": list(cl.email),
+                "pesan": message, "catatan": "Belum dikirim. Panggil lagi dengan confirm=true setelah pengguna setuju."}
+    return {"status": "DIKIRIM", "hasil": send_message(cl, subject, message)}
+
+
+# ---------------------------------------------------------------------------
+# Fase 4 — analisa lanjutan
+# ---------------------------------------------------------------------------
+
+def _resolve(client: str | None, customer_id: str | None):
+    """Kembalikan (customer_id, objek klien atau None)."""
+    a = ads()
+    if client:
+        cl = find_client(load_clients(a.settings.clients_file), client)
+        return cl.customer_id, cl
+    return a.customer_id(customer_id), None
+
+
+@tool
+def ngram_analysis(client: str | None = None, customer_id: str | None = None, campaign_id: str | None = None,
+                   n: int = 1, date_range: str = "LAST_30_DAYS", start: str | None = None, end: str | None = None,
+                   min_cost: float = 0, limit: int = 50) -> dict:
+    """Kelompokkan istilah penelusuran per kata (n=1), dua kata (n=2), dst. dengan biaya, klik, konversi —
+    untuk menemukan pola pemborosan yang tidak terlihat per istilah."""
+    cid, _ = _resolve(client, customer_id)
+    q = gaql.q_search_terms(gaql.date_clause(date_range, start, end), campaign_id)
+    rows = ads().search(cid, f"{q} LIMIT {gaql.MAX_ROWS}")
+    return {"customer_id": cid, "n": n, "jumlah_istilah": len(rows),
+            "ngram": analysis.ngram_table(rows, max(1, min(n, 4)), min_cost=min_cost)[:limit]}
+
+
+@tool
+def suggest_negative_keywords(client: str | None = None, customer_id: str | None = None,
+                              campaign_id: str | None = None, date_range: str = "LAST_30_DAYS",
+                              start: str | None = None, end: str | None = None,
+                              min_cost: float | None = None) -> dict:
+    """Usulan kata kunci negatif dari istilah/n-gram yang memakan biaya tanpa konversi. Kata produk klien
+    (protected_terms di clients.yaml) dan kata niat beli (harga, jual, distributor, ...) tidak pernah diusulkan.
+    Hasilnya bisa langsung dipakai di add_negative_keywords (tetap lewat pratinjau)."""
+    cid, cl = _resolve(client, customer_id)
+    q = gaql.q_search_terms(gaql.date_clause(date_range, start, end), campaign_id)
+    a = ads()
+    rows = a.search(cid, f"{q} LIMIT {gaql.MAX_ROWS}")
+    existing = [r.get("campaign_criterion.keyword.text", "") for r in a.search(cid, (
+        "SELECT campaign_criterion.keyword.text FROM campaign_criterion WHERE campaign_criterion.negative = TRUE "
+        "AND campaign_criterion.type = 'KEYWORD'" + (f" AND campaign.id = {int(campaign_id)}" if campaign_id else "")))]
+    threshold = min_cost if min_cost is not None else (cl.thresholds.min_waste_cost if cl else 20_000)
+    sugg = analysis.suggest_negatives(rows, threshold, cl.protected_terms if cl else (), existing)
+    return {"customer_id": cid, "ambang_biaya": threshold, "jumlah_usulan": len(sugg),
+            "potensi_hemat": round(sum(s["biaya"] for s in sugg), 2), "usulan": sugg,
+            "catatan": None if cl else "Tanpa clients.yaml, kata produk klien tidak terlindungi — periksa usulan dengan teliti."}
+
+
+@tool
+def detect_anomalies(client: str | None = None, customer_id: str | None = None, days: int = 21,
+                     z: float = 2.5) -> dict:
+    """Deteksi lonjakan/penurunan tajam kemarin (biaya, klik, konversi, CPC) dibanding hari-hari sebelumnya,
+    plus jumlah hari berturut-turut tanpa konversi."""
+    cid, _ = _resolve(client, customer_id)
+    t = today_local()
+    daily = daily_rows(ads().search(cid, q_daily((t - timedelta(days=days)).isoformat(), (t - timedelta(days=1)).isoformat())))
+    return {"customer_id": cid, "hari": len(daily), "anomali": analysis.detect_anomalies(daily, z),
+            "hari_tanpa_konversi_berturut": analysis.zero_conversion_streak(daily), "harian": daily}
+
+
+@tool
+def budget_pacing(client: str | None = None, customer_id: str | None = None,
+                  monthly_budget: float | None = None) -> dict:
+    """Proyeksi biaya akhir bulan vs budget bulanan (dari clients.yaml atau parameter monthly_budget),
+    plus saran budget harian agar pas."""
+    cid, cl = _resolve(client, customer_id)
+    budget = monthly_budget or (cl.monthly_budget if cl else None)
+    if not budget:
+        raise ValueError("monthly_budget belum diketahui. Isi di clients.yaml atau kirim sebagai parameter.")
+    t = today_local()
+    if t.day == 1:
+        return {"customer_id": cid, "catatan": "Hari pertama bulan ini; belum ada data untuk proyeksi."}
+    mtd = sum(r["cost"] for r in daily_rows(ads().search(cid, q_daily(t.replace(day=1).isoformat(),
+                                                                (t - timedelta(days=1)).isoformat()))))
+    return {"customer_id": cid, **analysis.budget_pacing(mtd, budget, t)}
 
 
 def main() -> None:
