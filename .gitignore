@@ -1,0 +1,12 @@
+.env
+*.env
+!.env.example
+google-ads.yaml
+client_secret*.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+logs/
