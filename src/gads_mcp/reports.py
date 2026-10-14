@@ -126,6 +126,16 @@ ACTION_LABEL = {
     "detach_negative_list": "Melepas daftar negatif dari kampanye",
     "create_rsa": "Membuat iklan baru",
     "update_rsa": "Memperbarui teks iklan",
+    "add_sitelink": "Menambah sitelink",
+    "add_callout": "Menambah callout",
+    "add_structured_snippet": "Menambah structured snippet",
+    "add_call": "Menambah ekstensi telepon",
+    "update_sitelink": "Memperbarui sitelink",
+    "update_callout": "Memperbarui callout",
+    "update_structured_snippet": "Memperbarui structured snippet",
+    "update_call": "Memperbarui nomor telepon iklan",
+    "set_extension_status": "Mengubah status ekstensi",
+    "remove_extensions": "Melepas ekstensi",
 }
 
 
@@ -137,6 +147,8 @@ def describe_change(entry: dict[str, Any]) -> str:
     detail = ""
     if entry.get("aksi") in ("add_negative_keywords", "add_to_negative_list"):
         detail = f"{len(after.get('ditambahkan', []))} kata"
+    elif str(entry.get("aksi")).startswith("add_") and isinstance(after.get("ditambahkan"), list):
+        detail = f"{len(after['ditambahkan'])} item"
     elif entry.get("aksi") == "attach_negative_list":
         detail = f"{len(after.get('ditambahkan', []))} kampanye"
     elif entry.get("aksi") == "update_budget":

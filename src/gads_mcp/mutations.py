@@ -26,6 +26,15 @@ COUNTING_TYPES = ("ONE_PER_CLICK", "MANY_PER_CLICK")
 MIN_CONVERSIONS_FOR_TARGET = 30  # konversi 30 hari minimum sebelum memasang Target CPA
 
 
+def _response_resource(r: Any) -> str:
+    """resource_name dari MutateOperationResponse (oneof: asset_result, campaign_asset_result, ...)."""
+    direct = getattr(r, "resource_name", None)
+    if direct:
+        return direct
+    field_name = type(r).pb(r).WhichOneof("response")
+    return getattr(r, field_name).resource_name if field_name else ""
+
+
 def _digits(value: Any, name: str) -> str:
     text = str(value).strip()
     if not text.isdigit():
@@ -71,13 +80,20 @@ class Mutator:
     # ---------- infrastruktur ----------
 
     def _send(self, service: str, method: str, cid: str, operations: list, validate_only: bool) -> list[str]:
+        """Kirim operasi. method='mutate' (GoogleAdsService) = beberapa jenis operasi dalam satu
+        request atomik: gagal satu, batal semua."""
         svc = self.gc.get_service(service)
-        request = {"customer_id": cid, "operations": operations, "validate_only": validate_only}
+        key = "mutate_operations" if method == "mutate" else "operations"
+        request = {"customer_id": cid, key: operations, "validate_only": validate_only}
         try:
             response = getattr(svc, method)(request=request)
         except GoogleAdsException as ex:
             raise AdsError(_describe(ex)) from ex
-        return [r.resource_name for r in response.results] if not validate_only else []
+        if validate_only:
+            return []
+        if method == "mutate":
+            return [_response_resource(r) for r in response.mutate_operation_responses]
+        return [r.resource_name for r in response.results]
 
     def _finish(
         self,

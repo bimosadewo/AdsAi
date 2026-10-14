@@ -183,7 +183,12 @@ def humanize(row: dict[str, Any]) -> dict[str, Any]:
         if key in ("metrics.average_cpc", "metrics.cost_per_conversion") and value is not None:
             out[key] = round(float(value) / 1_000_000, 2)
             continue
-        if isinstance(value, str) and value.isdigit() and not key.endswith(".id") and "id" not in key.split(".")[-1]:
+        last = key.split(".")[-1]
+        # int64 dari API datang sebagai string; ubah hanya metrik & hitungan. ID, nomor telepon,
+        # dan teks berisi angka (mis. '081234567890') tetap string agar nol di depan tidak hilang.
+        if isinstance(value, str) and value.isdigit() and (
+            key.startswith("metrics.") or last.endswith(("_count", "_days"))
+        ):
             out[key] = int(value)
             continue
         if isinstance(value, float):

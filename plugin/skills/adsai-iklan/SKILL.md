@@ -46,3 +46,27 @@ teks · jumlah karakter · sudut pandang.
 
 `campaign_structure` menandai `persetujuan: DISAPPROVED`. Alasan detail kebijakan ada di UI Google Ads
 (Iklan → kolom Status). Perbaiki teks/landing page, lalu `update_responsive_search_ad`.
+
+## 6. Ekstensi (sitelink, callout, snippet, telepon)
+
+Ekstensi gratis, menaikkan CTR, dan memengaruhi Ad Rank. **Kampanye Search belum selesai tanpa ekstensi.**
+`campaign_structure` menandai kekurangannya; `list_extensions` menampilkan yang terpasang beserta `asset_id`.
+
+| Ekstensi | Tool | Minimum | Aturan |
+|---|---|---|---|
+| Sitelink | `add_sitelinks` | 4 | Teks ≤25, deskripsi ≤35 (berpasangan), tiap sitelink ke halaman berbeda |
+| Callout | `add_callouts` | 4–6 | ≤25, fakta/keunggulan, bukan ajakan, tanpa titik/tanda seru |
+| Structured snippet | `add_structured_snippets` | 1 header | Header resmi (Jenis, Merek, Layanan, Model, …), 3–10 nilai ≤25 |
+| Telepon | `add_call_extension` | — | Wajib untuk lead B2B/lokal; pasang `conversion_action_id` agar panggilan terhitung |
+
+- **Sitelink jangan mengulang iklan.** Bila headline sudah "Jual Geotextile", sitelink sebaiknya Harga, Minta
+  Penawaran, Spesifikasi Produk, Proyek Kami — langkah berikut pembeli yang siap. Halaman tujuannya harus ada
+  dan sesuai label.
+- **Callout bukan slogan.** "Kualitas Terpercaya" tidak berarti apa-apa; "Stok Ready Surabaya", "Harga Pabrik",
+  "Bisa Potong Ukuran" adalah alasan memilih.
+- **Snippet butuh kategori nyata** — jangan mencampur hal yang tidak sejenis dalam satu header.
+- Grup iklan bertema berbeda boleh punya sitelink/callout sendiri (`ad_group_id`); ekstensi grup iklan
+  mengalahkan ekstensi kampanye untuk grup itu.
+- **Mengubah** = `update_extension` (aset baru dibuat & ditautkan, tautan lama dilepas, atomik).
+  **Jeda sementara** = `set_extension_status` (mis. telepon saat kantor libur). **Lepas** = `remove_extensions`
+  (aset tetap di library). Utamakan mengganti daripada melepas tanpa pengganti.

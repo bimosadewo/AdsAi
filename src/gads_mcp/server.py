@@ -10,7 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, gaql, rsa, structure
+from . import analysis, extensions, gaql, rsa, structure
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
@@ -372,6 +372,115 @@ def update_responsive_search_ad(ad_group_id: str, ad_id: str, customer_id: str |
     a = ads()
     return mutator().update_rsa(a.customer_id(customer_id), ad_group_id, ad_id, confirm, headlines, descriptions,
                                 final_urls, path1, path2)
+
+
+# ---------------------------------------------------------------------------
+# Ekstensi (sitelink, callout, structured snippet, telepon)
+# ---------------------------------------------------------------------------
+
+def _ext() -> extensions.Extensions:
+    return extensions.Extensions(mutator())
+
+
+def _raise_if(errors: list[str]) -> None:
+    if errors:
+        raise ValueError("Ekstensi belum valid:\n- " + "\n- ".join(errors))
+
+
+@tool
+def list_extensions(campaign_id: str, customer_id: str | None = None) -> dict:
+    """Ekstensi yang tertaut ke kampanye (level kampanye & grup iklan): sitelink, callout, structured snippet,
+    telepon — dengan asset_id dan status. Pakai sebelum menambah (hindari duplikat), mengubah, atau melepas."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    items = _ext().list(cid, campaign_id)
+    count = {k: sum(1 for i in items if i["jenis"] == k and i["status"] == "ENABLED") for k in extensions.TYPES}
+    return {"customer_id": cid, "jumlah_aktif": count, "ekstensi": items}
+
+
+@write_tool
+def add_sitelinks(campaign_id: str, sitelinks: list[dict], customer_id: str | None = None, confirm: bool = False,
+                  ad_group_id: str | None = None) -> dict:
+    """Tambah sitelink. sitelinks: [{"link_text" (≤25), "final_url", "description1" (≤35), "description2" (≤35)}];
+    deskripsi opsional tapi harus berpasangan. Arahkan tiap sitelink ke halaman berbeda (Harga, Penawaran,
+    Produk, Kontak). ad_group_id: pasang khusus di satu grup iklan."""
+    a = ads()
+    specs, errors, warnings = extensions.validate_sitelinks(sitelinks)
+    _raise_if(errors)
+    return _ext().add(a.customer_id(customer_id), campaign_id, "SITELINK", specs, confirm, ad_group_id, warnings)
+
+
+@write_tool
+def add_callouts(campaign_id: str, callouts: list[str], customer_id: str | None = None, confirm: bool = False,
+                 ad_group_id: str | None = None) -> dict:
+    """Tambah callout (≤25 karakter, 4-8 per kampanye): fakta/keunggulan seperti 'Stok Ready', 'Harga Pabrik',
+    'Kirim Seluruh Indonesia'. Bukan ajakan, tanpa titik di akhir, tanpa tanda seru."""
+    a = ads()
+    texts, errors, warnings = extensions.validate_callouts(callouts)
+    _raise_if(errors)
+    return _ext().add(a.customer_id(customer_id), campaign_id, "CALLOUT", [{"text": t} for t in texts], confirm,
+                      ad_group_id, warnings)
+
+
+@write_tool
+def add_structured_snippets(campaign_id: str, snippets: list[dict], customer_id: str | None = None,
+                            confirm: bool = False, ad_group_id: str | None = None) -> dict:
+    """Tambah structured snippet: [{"header": "Jenis", "values": ["Woven", "Non Woven", "HDPE"]}].
+    Header resmi Google (boleh alias Indonesia): Jenis/Types, Merek/Brands, Layanan/Service catalog, Model/Models,
+    Gaya/Styles, Kursus/Courses, Destinasi/Destinations, Fasilitas/Amenities, dll. 3-10 nilai, masing-masing ≤25."""
+    a = ads()
+    specs, errors, warnings = extensions.validate_snippets(snippets)
+    _raise_if(errors)
+    return _ext().add(a.customer_id(customer_id), campaign_id, "STRUCTURED_SNIPPET", specs, confirm,
+                      ad_group_id, warnings)
+
+
+@write_tool
+def add_call_extension(campaign_id: str, phone_number: str, customer_id: str | None = None, confirm: bool = False,
+                       country_code: str = "ID", conversion_action_id: str | None = None) -> dict:
+    """Tambah ekstensi telepon (tombol telepon di HP). Nomor Indonesia boleh '0812...', '+62 812...', '021 ...'.
+    Nomor yang sudah terpasang tidak ditambah lagi. conversion_action_id: hitung panggilan sebagai konversi."""
+    a = ads()
+    spec, warnings = extensions.build_spec("CALL", {"phone_number": phone_number, "country_code": country_code,
+                                                    "conversion_action_id": conversion_action_id})
+    return _ext().add(a.customer_id(customer_id), campaign_id, "CALL", [spec], confirm, None, warnings)
+
+
+@write_tool
+def update_extension(campaign_id: str, asset_id: str, customer_id: str | None = None, confirm: bool = False,
+                     link_text: str | None = None, final_url: str | None = None, description1: str | None = None,
+                     description2: str | None = None, text: str | None = None, header: str | None = None,
+                     values: list[str] | None = None, phone_number: str | None = None, country_code: str = "ID",
+                     conversion_action_id: str | None = None) -> dict:
+    """Ubah satu ekstensi (asset_id dari list_extensions). Jenis diambil dari ekstensi lama; kirim field LENGKAP
+    versi baru: sitelink → link_text, final_url, description1/2; callout → text; snippet → header, values;
+    telepon → phone_number. Dijalankan atomik: aset baru dibuat & ditautkan, tautan lama dilepas."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    e = _ext()
+    (old,) = e._find(cid, extensions._digits(campaign_id, "campaign_id"), [asset_id])
+    spec, warnings = extensions.build_spec(old["jenis"], {
+        "link_text": link_text, "final_url": final_url, "description1": description1, "description2": description2,
+        "text": text, "header": header, "values": values, "phone_number": phone_number, "country_code": country_code,
+        "conversion_action_id": conversion_action_id})
+    return e.replace(cid, campaign_id, asset_id, spec, confirm, warnings)
+
+
+@write_tool
+def set_extension_status(campaign_id: str, asset_ids: list[str], status: str, customer_id: str | None = None,
+                         confirm: bool = False) -> dict:
+    """Jeda (PAUSED) atau aktifkan (ENABLED) ekstensi tanpa melepasnya — mis. nomor telepon saat kantor libur."""
+    a = ads()
+    return _ext().set_status(a.customer_id(customer_id), campaign_id, asset_ids, status, confirm)
+
+
+@write_tool
+def remove_extensions(campaign_id: str, asset_ids: list[str], customer_id: str | None = None,
+                      confirm: bool = False) -> dict:
+    """Lepas ekstensi dari kampanye/grup iklan (asset_ids wajib, dari list_extensions). Aset tetap ada di
+    library akun. Melepas semua sekaligus tanpa daftar ID sengaja tidak didukung."""
+    a = ads()
+    return _ext().remove(a.customer_id(customer_id), campaign_id, asset_ids, confirm)
 
 
 # ---------------------------------------------------------------------------

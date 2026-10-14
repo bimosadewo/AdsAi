@@ -62,7 +62,7 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | ✅ Selesai | Shared negative keyword list (7 tools) |
 | ✅ Selesai | `campaign_structure` + audit struktur |
 | ✅ Selesai | Iklan RSA: validasi, buat (dijeda), ubah, performa per iklan, status per iklan |
-| Sedang | Membuat/mengubah ekstensi (sitelink, callout, snippet, telepon) — audit sudah ada |
+| ✅ Selesai | Ekstensi: sitelink, callout, snippet, telepon — tambah, ubah (atomik), jeda, lepas (8 tools) |
 | Sedang | Keyword research (Keyword Planner), jadwal iklan, lokasi, perangkat |
 | Sedang | Meta Ads (klien FB Ads) dengan pola yang sama |
 | Rendah | Membuat kampanye baru (Model A: tim membuat di UI) |

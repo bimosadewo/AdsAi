@@ -78,7 +78,7 @@ Web app adspirer.ai ── sambungkan akun iklan, dashboard, monitor server-side
 | **Shared negative keyword list** | ✅ | ✅ (+ dedup, cek tipe list, info jumlah kampanye terdampak) | — |
 | **Struktur kampanye** (`get_campaign_structure`) | ✅ | ✅ `campaign_structure` (+ temuan audit struktur otomatis) | — |
 | **Iklan RSA**: baca/buat/ubah, performa per iklan | ✅ | ✅ (+ `validate_ad_copy` tanpa API, pin, cek superlatif Bahasa Indonesia, dibuat dijeda) | — |
-| **Ekstensi**: sitelink, callout, snippet, call | ✅ | Baca + audit (≥4 sitelink, 4–6 callout); buat/ubah belum | Sedang |
+| **Ekstensi**: sitelink, callout, snippet, call | ✅ | ✅ (+ ubah atomik, alias header Indonesia, nomor Indonesia, dedup lintas format nomor) | — |
 | Keyword research (Keyword Planner) | ✅ | ❌ | Sedang |
 | Jadwal iklan, lokasi, perangkat | ✅ | ❌ | Sedang |
 | Buat kampanye Search/PMax/Demand Gen/Video/Display | ✅ | ❌ | Rendah untuk Model A (tim buat di UI) |
@@ -109,9 +109,25 @@ Dipelajari dari skema tool Adspirer (dibaca gratis via `get_tool_schema`) dan sk
 - Peningkatan AdsAi di luar Adspirer: alert `IKLAN_DITOLAK` di `client_health`/laporan; iklan baru
   dibuat **dijeda** dan diaktifkan lewat `set_status level="ad"`.
 
+### Putaran 3 (ekstensi)
+
+Dari skema `add_sitelinks`, `add_callout_extensions`, `add_structured_snippets`, `add_call_asset`,
+`list_campaign_extensions`, `remove_*`, `set_call_asset_status` dan referensi `extensions.md`:
+- Batas: sitelink teks ≤25, deskripsi ≤35 berpasangan; callout ≤25 tanpa titik/CTA; snippet header resmi,
+  3–10 nilai ≤25 → validator `extensions.py`.
+- Telepon idempoten (nomor sama tidak ditambah lagi) → diadopsi, dicocokkan lintas format (0812…/+62 812…).
+- Ekstensi per grup iklan mengalahkan level kampanye → opsi `ad_group_id`.
+- "Remove" = lepas tautan; aset tetap → sama di AdsAi. **Perbedaan**: Adspirer melepas SEMUA bila
+  `asset_ids` kosong; AdsAi sengaja menolak (wajib daftar ID) agar tidak ada penghapusan massal tak sengaja.
+- Adspirer tidak punya "ubah" langsung (hapus lalu tambah, dua langkah). AdsAi punya `update_extension`
+  yang atomik: aset baru + tautan baru + lepas lama dalam satu request, gagal satu batal semua.
+- Ditemukan & diperbaiki saat membangun: `humanize` menghapus angka 0 di depan nomor telepon
+  ('081234…' → 81234…). Konversi angka kini dibatasi ke metrik & field hitungan.
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
 |---|---|---|
 | 2026-10-14 | Audit konversi, list kampanye & konversi, 2× negatif, 3× ubah kampanye, 6× ubah konversi | Lihat §3 |
 | 2026-10-14 | `search_tools` (gratis) + `get_tool_schema` 12 tool: shared list, struktur, RSA, performa iklan | Lihat §5 putaran 2 — tidak memakai kuota |
+| 2026-10-14 | `get_tool_schema` 8 tool ekstensi + skill `extensions.md` | Lihat §5 putaran 3 — tidak memakai kuota |

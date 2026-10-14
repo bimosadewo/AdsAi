@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (63 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (75 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (36)
+## Tools MCP (44)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -62,6 +62,14 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `validate_ad_copy` | Cek teks RSA tanpa API: panjang, jumlah, tanda seru, kapital, duplikat, pin, klaim superlatif |
 | `create_responsive_search_ad` | Buat RSA (default **dijeda**) |
 | `update_responsive_search_ad` | Ubah headline/deskripsi/URL/path RSA |
+
+**Ekstensi**
+| Tool | Fungsi |
+|---|---|
+| `list_extensions` | Sitelink, callout, snippet, telepon yang tertaut (kampanye & grup iklan) + `asset_id` |
+| `add_sitelinks` / `add_callouts` / `add_structured_snippets` / `add_call_extension` | Tambah (dibuat & ditautkan atomik, duplikat dilewati, opsi per grup iklan) |
+| `update_extension` | Ubah satu ekstensi (aset baru + tautkan + lepas lama, atomik) |
+| `set_extension_status` / `remove_extensions` | Jeda/aktifkan atau lepas (aset tetap di library) |
 
 **Shared negative keyword list**
 | Tool | Fungsi |
@@ -107,7 +115,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 63 tes
+   pytest                           # opsional: 75 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -154,7 +162,7 @@ dalam Bahasa Indonesia — pelajaran utama dari Adspirer (lihat [NOTICE](NOTICE)
 | `skills/adsai-agent` | Kontrak keamanan, cara memakai tools, peta tool |
 | `skills/adsai-review` | Review performa & laporan klien (baca-saja) |
 | `skills/adsai-optimasi` | Potong pemborosan, negatif (kampanye vs shared list), realokasi, pacing |
-| `skills/adsai-iklan` | Menulis & memperbaiki RSA dari search terms nyata, validasi, buat/ubah |
+| `skills/adsai-iklan` | Menulis & memperbaiki RSA dan ekstensi dari search terms nyata, validasi, buat/ubah |
 | `commands/audit.md`, `commands/mingguan.md` | Perintah `/audit <klien>` dan `/mingguan <klien>` |
 
 - **Claude Code**: `claude --plugin-dir ./plugin` (atau salin `plugin/skills/*` ke `~/.claude/skills/`).
@@ -187,9 +195,10 @@ src/gads_mcp/
   analysis.py   n-gram, usulan negatif, anomali, pacing, aturan alert
   structure.py  struktur kampanye + audit struktur
   rsa.py        validasi teks Responsive Search Ad
+  extensions.py ekstensi: validasi + tambah/ubah/jeda/lepas (atomik)
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     36 tools MCP
+  server.py     44 tools MCP
   cli.py        perintah `adsai`
 ```

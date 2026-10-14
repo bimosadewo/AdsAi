@@ -124,13 +124,14 @@ def audit(campaign: dict[str, Any], groups: list[dict[str, Any]], ext: dict[str,
 
     if campaign.get("jenis") == "SEARCH":
         if len(ext["sitelink"]) < MIN_SITELINKS:
-            add("PERINGATAN", f"Sitelink baru {len(ext['sitelink'])}; pasang minimal {MIN_SITELINKS}.")
+            add("PERINGATAN", f"Sitelink baru {len(ext['sitelink'])}; pasang minimal {MIN_SITELINKS} (add_sitelinks).")
         if len(ext["callout"]) < MIN_CALLOUTS:
-            add("PERINGATAN", f"Callout baru {len(ext['callout'])}; pasang 4-6 (mis. 'Gratis Ongkir', 'Stok Ready').")
+            add("PERINGATAN", f"Callout baru {len(ext['callout'])}; pasang 4-6, mis. 'Gratis Ongkir', 'Stok Ready' "
+                              "(add_callouts).")
         if not ext["snippet"]:
-            add("INFO", "Belum ada structured snippet (mis. Jenis: Woven, Non Woven, HDPE).")
+            add("INFO", "Belum ada structured snippet, mis. Jenis: Woven, Non Woven, HDPE (add_structured_snippets).")
         if not ext["telepon"]:
-            add("INFO", "Belum ada ekstensi telepon — berguna untuk lead B2B.")
+            add("INFO", "Belum ada ekstensi telepon — berguna untuk lead B2B (add_call_extension).")
     for g in groups:
         if g["status"] != "ENABLED":
             continue

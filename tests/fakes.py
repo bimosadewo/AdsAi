@@ -17,6 +17,13 @@ class FakeService:
         self._calls = calls
 
     def __getattr__(self, name):
+        if name == "mutate":
+            def mutate_all(request):
+                self._calls.append((name, request))
+                n = len(request["mutate_operations"])
+                return SimpleNamespace(mutate_operation_responses=[SimpleNamespace(resource_name=f"res/{i}")
+                                                                   for i in range(n)])
+            return mutate_all
         if name.startswith("mutate_"):
             def mutate(request):
                 self._calls.append((name, request))

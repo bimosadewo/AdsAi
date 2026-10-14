@@ -48,6 +48,10 @@ def test_flatten_and_humanize():
     assert row["metrics.average_cpc"] == 6725.58
     assert row["metrics.ctr"] == 0.0802
     assert not any(k.endswith("resource_name") for k in row)
+    phone = gaql.humanize({"asset.call_asset.phone_number": "081234567890", "shared_set.member_count": "26",
+                           "ad_group_ad.ad.responsive_search_ad.path1": "2024"})
+    assert phone == {"asset.call_asset.phone_number": "081234567890", "shared_set.member_count": 26,
+                     "ad_group_ad.ad.responsive_search_ad.path1": "2024"}
 
 
 def test_summarize():
