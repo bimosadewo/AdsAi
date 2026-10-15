@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import gaql
 from .analysis import budget_pacing
 from .client import AdsError
 
-TZ = ZoneInfo("Asia/Jakarta")
+try:
+    TZ = ZoneInfo("Asia/Jakarta")
+except ZoneInfoNotFoundError:  # Windows tanpa paket tzdata; WIB tidak memakai DST jadi UTC+7 tetap setara
+    TZ = timezone(timedelta(hours=7), "WIB")
 
 
 class Searcher(Protocol):
