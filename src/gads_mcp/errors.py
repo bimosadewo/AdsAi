@@ -65,8 +65,9 @@ HINTS: dict[str, str] = {
     "INVALID_DESTINATION_URL": "URL tujuan tidak valid. Pakai URL lengkap https:// yang bisa dibuka.",
     "INVALID_DOMAIN_NAME": "URL tujuan tidak valid. Pakai URL lengkap https:// yang bisa dibuka.",
     # konversi & penargetan
-    "MUTATE_NOT_ALLOWED": "Objek ini tidak bisa diubah lewat API (mis. konversi Google-hosted/panggilan bawaan). "
-                          "Ubah di UI: Tujuan → Konversi.",
+    "MUTATE_NOT_ALLOWED": "Objek ini tidak bisa diubah lewat API — biasanya konversi buatan Google (GOOGLE_HOSTED: "
+                          "panggilan/local actions/YouTube) atau konversi dari URL di UI (WEBPAGE_CODELESS, mis. "
+                          "'Page load …'). Ubah di UI: Sasaran → Konversi → klik nama → Edit setelan.",
     "INVALID_GEO_TARGET_CONSTANT": "ID lokasi tidak valid. Pakai resolve_locations untuk mencari ID yang benar.",
 }
 

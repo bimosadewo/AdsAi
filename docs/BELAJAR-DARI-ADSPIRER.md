@@ -257,6 +257,17 @@ akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–
   `generate_report_now` (PDF/HTML/JSON, async 2–5 menit, email/Slack/webhook). AdsAi: laporan WA/email
   berbahasa Indonesia lewat `adsai report --send` terjadwal.
 
+- **Mengubah konversi lewat Adspirer (uji 15 Okt):**
+  - `update_conversion_action` mendokumentasikan `status: PAUSED`, padahal Google Ads API tidak punya status
+    itu untuk konversi (hanya ENABLED/HIDDEN/REMOVED) → gagal "Failed to complete operation: PAUSED".
+  - Konversi `WEBPAGE_CODELESS` ("Add to basket (Page load …)") ditolak: *Mutates are not allowed* — Adspirer
+    baru tahu setelah mencoba; tidak ada pratinjau.
+  - ContactWA & PurchaseWA → Sekunder **berhasil**, tetapi `list_conversion_actions` sesudahnya masih
+    menampilkan nilai lama karena **cache Redis 1 jam** — klaim "read-back" mereka tidak berlaku di sini.
+  - `click_through_lookback_window_days` dibatasi 1–30, padahal Google mengizinkan sampai 90 (akun ini memakai 90).
+  → AdsAi sudah lebih aman di ketiga titik: pratinjau `validate_only` menangkap penolakan sebelum eksekusi,
+  status yang ditawarkan hanya ENABLED/HIDDEN, dan verifikasi membaca langsung dari API (tanpa cache).
+
 Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Search).
 
 ## 6. Log observasi (tambahkan setiap sesi)
