@@ -830,8 +830,16 @@ def research_keywords(seed_keywords: list[str], url: str | None = None, geo_ids:
     Hanya membaca — tidak membuat kampanye dan tidak memakan biaya iklan."""
     a = ads()
     cid = a.customer_id(customer_id)
-    return keyword_research.KeywordResearch(a).run(cid, seed_keywords, url, geo_ids, language,
-                                                   include_terms or (), exclude_terms or (), max(1, min(limit, 200)))
+    try:
+        return keyword_research.KeywordResearch(a).run(cid, seed_keywords, url, geo_ids, language,
+                                                       include_terms or (), exclude_terms or (), max(1, min(limit, 200)))
+    except AdsError as ex:
+        if any(k in str(ex) for k in ("PERMISSION", "NOT_APPROVED", "NOT_ALLOWED", "AUTHORIZATION")):
+            raise AdsError(f"{ex} || Kemungkinan Keyword Planner lewat API belum diizinkan untuk level akses project "
+                           "ini (Explorer). Ajukan Basic: Cloud Console → Google Ads API → Overview → Start Brand "
+                           "Verification → Apply for access. Sementara itu, pakai Keyword Planner di UI Google Ads.",
+                           ex.codes) from ex
+        raise
 
 
 # ---------------------------------------------------------------------------
