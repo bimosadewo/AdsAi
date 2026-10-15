@@ -233,6 +233,32 @@ Dibaca: ±100 halaman panduan/knowledge base/agent skills/platform, 178 halaman 
 **Backlog baru** (lihat ROADMAP): keyword research Indonesia, monitor + antrean persetujuan, ekstensi tingkat
 akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–F.
 
+### Putaran 8 (paket Plus, uji langsung di akun Tiga Pilar — 15 Okt 2026)
+
+- **Kuota:** Plus = 150 panggilan/bulan (terpakai 10 setelah upgrade). `get_tool_schema`, `search_tools`,
+  `get_usage_status` tidak memotong kuota.
+- **Dashboard `get_campaign_performance`:** sumber data = *cache* malam hari (`freshness.source_mix: cache`).
+  Diminta `last_7_days`, jawaban berlabel "30 hari" padahal cache baru berisi **1 hari** (14 Okt) → total
+  terlihat seperti 30 hari padahal 1 hari. Rekomendasi generik ("Continue monitoring…"). Yang bagus: blok
+  `freshness` (last_data_date, as_of_days_ago, partial_last_day), `budget_lost_is` per kampanye,
+  keyword bermasalah (biaya tanpa konversi), ad group terlemah.
+  → Pelajaran AdsAi: AdsAi membaca API langsung (tidak basi), tetapi tetap harus **menyebut rentang data yang
+  benar-benar ada** dan menandai hari ini sebagai belum lengkap.
+- **Watch Agent (`run_watch_now`):** "service unreachable" saat dicoba — fitur unggulan belum bisa diandalkan.
+- **Monitor:** satu kondisi saja (metric + greater_than/less_than + threshold + `consecutive_days` 1–14),
+  dicek harian, maks 5 monitor aktif di paket berbayar, kirim email digest. Tidak ada AND/OR, tidak ada
+  ambang relatif. `test_monitor` = uji kering; hasilnya **mengabaikan `consecutive_days`** (dengan data 1 hari
+  sudah dinyatakan "would trigger" untuk syarat 3 hari).
+  → AdsAi sudah setara/lebih: `adsai alerts` mengevaluasi konversi-nol beruntun, CPA naik, anomali (z-score),
+  pacing, tidak tayang, iklan ditolak — sekaligus, per klien, dengan ambang di `clients.yaml`, dan kirim WA.
+- **Auto-action:** monitor bisa mengantre aksi (pause/budget) yang menunggu persetujuan, kedaluwarsa 48 jam
+  (`list_pending_actions` → `manage_action`). Pola antrean persetujuan ini masih backlog AdsAi.
+- **Laporan:** `schedule_brief` (default zona waktu America/New_York — harus diisi Asia/Jakarta) dan
+  `generate_report_now` (PDF/HTML/JSON, async 2–5 menit, email/Slack/webhook). AdsAi: laporan WA/email
+  berbahasa Indonesia lewat `adsai report --send` terjadwal.
+
+Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Search).
+
 ## 6. Log observasi (tambahkan setiap sesi)
 
 | Tanggal | Yang dicoba di Adspirer | Pola/pelajaran |
@@ -244,3 +270,4 @@ akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–
 | 2026-10-14 | Screenshot halaman Expert Space (adspirer.ai) dari pengguna | Lihat §5 putaran 5 |
 | 2026-10-14 | Dokumentasi publik adspirer.com (via pencarian web) | Lihat §5 putaran 6 |
 | 2026-10-14 | Seluruh dokumentasi publik (panduan, KB, 178 referensi API, changelog) dibaca langsung | Lihat §5 putaran 7 |
+| 2026-10-15 | Paket Plus: dashboard, Watch Agent (gagal: unreachable), create_monitor + test_monitor | Lihat §5 putaran 8 |
