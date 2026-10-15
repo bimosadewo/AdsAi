@@ -48,6 +48,28 @@ def _primary_by_goal(actions: Iterable[dict[str, Any]]) -> dict[tuple[str, str],
     return out
 
 
+LIGHT_CATEGORIES = {"PAGE_VIEW", "ADD_TO_CART", "BEGIN_CHECKOUT", "ENGAGEMENT", "DOWNLOAD"}
+LEAD_CATEGORIES = {"CONTACT", "SUBMIT_LEAD_FORM", "PHONE_CALL_LEAD", "QUALIFIED_LEAD", "CONVERTED_LEAD",
+                   "BOOK_APPOINTMENT", "REQUEST_QUOTE", "SIGNUP", "PURCHASE"}
+LIGHT_WORDS = ("page load", "page view", "scroll", "pageview", "kunjungan", "time on site")
+
+
+def light_primary(used: list[dict[str, Any]], actions: Iterable[dict[str, Any]]) -> list[str]:
+    """Konversi Utama yang sebenarnya aksi ringan (lihat halaman, scroll, add-to-cart page load) di sasaran
+    yang juga berisi prospek sungguhan — Smart Bidding akan mengejar keduanya seolah setara."""
+    used_keys = {(g["kategori"], g["sumber"]) for g in used}
+    has_lead = any(g["kategori"] in LEAD_CATEGORIES and g["konversi_utama"] for g in used)
+    out = []
+    for a in actions:
+        if not a.get("conversion_action.primary_for_goal"):
+            continue
+        key = (a.get("conversion_action.category"), a.get("conversion_action.origin"))
+        name = str(a.get("conversion_action.name") or "")
+        if key in used_keys and (key[0] in LIGHT_CATEGORIES or any(w in name.lower() for w in LIGHT_WORDS)):
+            out.append(name)
+    return sorted(set(out)) if has_lead else []
+
+
 def _describe(goals: list[tuple[str, str]], primary: dict) -> list[dict[str, Any]]:
     return [{"kategori": cat, "sumber": origin, "konversi_utama": primary.get((cat, origin), [])}
             for cat, origin in goals]
@@ -82,6 +104,11 @@ def assess(data: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
         out["pesan"] = f"{len(covered)} sasaran berisi konversi Utama."
     if empty:
         out["sasaran_kosong"] = empty
+    light = light_primary(used, data.get("konversi") or [])
+    if light:
+        out["peringatan"] = [f"Aksi ringan berstatus Utama, dihitung setara prospek: {', '.join(light)}. Jadikan "
+                             "Sekunder (update_conversion_action primary_for_goal=false) agar bidding mengejar "
+                             "calon pembeli, bukan pengunjung."]
     return out
 
 

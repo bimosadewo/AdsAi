@@ -72,3 +72,20 @@ def test_use_account_goals_guards(tmp_path):
     empty = goals.Goals(Mutator(FakeAds(search_for(acct_goals=("PAGE_VIEW",))), AuditLog(tmp_path)))
     with pytest.raises(ValueError, match="update_conversion_action"):
         empty.use_account_goals(CID, "1", confirm=False)
+
+
+def test_light_primary_warning():
+    actions = ACTIONS + [{"conversion_action.name": "Add to basket (Page load /harga/)",
+                          "conversion_action.category": "ADD_TO_CART", "conversion_action.origin": "WEBSITE",
+                          "conversion_action.primary_for_goal": True}]
+
+    def search(cid, q):
+        if "FROM conversion_action" in q:
+            return actions
+        return search_for(level="CUSTOMER", camp_goals=("CONTACT", "ADD_TO_CART"))(cid, q)
+
+    res = goals.assess({k: search(CID, q) for k, q in goals.queries(CID, "1").items()})
+    assert res["status"] == "OK" and "Add to basket (Page load /harga/)" in res["peringatan"][0]
+    only_light = goals.assess({k: search_for(level="CUSTOMER", camp_goals=("PAGE_VIEW",))(CID, q)
+                               for k, q in goals.queries(CID, "1").items()})
+    assert "peringatan" not in only_light          # tanpa prospek → masalahnya TANPA_KONVERSI_UTAMA, bukan campur
