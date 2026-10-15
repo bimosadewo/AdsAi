@@ -10,7 +10,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, diagnostics, dossier, errors, extensions, gaql, goals, rsa, strategy, structure, targeting
+from . import (analysis, diagnostics, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
+               structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
@@ -810,6 +811,27 @@ def budget_pacing(client: str | None = None, customer_id: str | None = None,
                                                                 (t - timedelta(days=1)).isoformat()))))
     return {"customer_id": cid, **analysis.budget_pacing(mtd, budget, t)}
 
+
+
+# ---------------------------------------------------------------------------
+# Riset kata kunci
+# ---------------------------------------------------------------------------
+
+@tool
+def research_keywords(seed_keywords: list[str], url: str | None = None, geo_ids: list[str] | None = None,
+                      language: str = "id", include_terms: list[str] | None = None,
+                      exclude_terms: list[str] | None = None, limit: int = 50,
+                      customer_id: str | None = None) -> dict:
+    """Riset kata kunci Keyword Planner untuk Indonesia: volume bulanan, persaingan, kisaran bid atas halaman
+    (Rupiah), niat (BELI / TINGGI / SEDANG / RENDAH / INFORMASI), kandidat kata kunci iklan & kandidat negatif,
+    serta budget harian untuk 10/20/40 klik. Default lokasi Indonesia (geo 2360) dan bahasa Indonesia (1025);
+    geo_ids bisa diisi ID kota/provinsi dari resolve_locations. Seed selalu ditampilkan walau volumenya kecil.
+    include_terms: kata produk wajib (mis. ["pipa", "geopipe"]) untuk membuang ide yang melenceng.
+    Hanya membaca — tidak membuat kampanye dan tidak memakan biaya iklan."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    return keyword_research.KeywordResearch(a).run(cid, seed_keywords, url, geo_ids, language,
+                                                   include_terms or (), exclude_terms or (), max(1, min(limit, 200)))
 
 
 # ---------------------------------------------------------------------------
