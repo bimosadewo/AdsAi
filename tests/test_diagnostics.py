@@ -243,3 +243,19 @@ def test_remove_keywords_needs_confirm_delete(tmp_path):
     assert done["status"] == "DIJALANKAN"
     assert ads.calls[-1][1]["operations"][0].remove.endswith("adGroupCriteria/11~22")
     assert AuditLog(tmp_path).read(CID)[0]["aksi"] == "remove_keywords"
+
+
+def test_developer_token_optional(monkeypatch, tmp_path):
+    from gads_mcp import config
+
+    monkeypatch.setenv("GOOGLE_ADS_ENV_FILE", str(tmp_path / "kosong.env"))
+    for k in ("GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_LOGIN_CUSTOMER_ID", "GOOGLE_ADS_DEFAULT_CUSTOMER_ID"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_ID", "id")
+    monkeypatch.setenv("GOOGLE_ADS_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("GOOGLE_ADS_REFRESH_TOKEN", "refresh")
+    monkeypatch.setenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "221-446-0264")
+    s = config.load_settings()
+    cfg = s.to_google_ads_dict()
+    assert "developer_token" not in cfg and cfg["login_customer_id"] == "2214460264"
+    assert "Cloud Console" in errors.HINTS["CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION"]

@@ -1,17 +1,23 @@
 # Fase 0 — Menyiapkan Akses Google Ads API
 
 Langkah ini **harus dikerjakan pemilik akun** (butuh login Google dan data bisnis).
-Hasil akhirnya adalah 5 nilai rahasia di file `.env`:
+> **Perubahan Google per 9 Sep 2026:** developer token tidak lagi menentukan akses (header-nya diabaikan).
+> Tingkat akses (Test / Explorer / Basic / Standard) kini melekat pada **project Google Cloud** pemilik
+> OAuth client, dan pengajuan Basic Access dilakukan di **Cloud Console**, bukan di Pusat API MCC.
+> Formulir Pusat API di MCC sekarang hanya untuk *App Conversion Tracking and Remarketing API* — **jangan dipakai**.
+
+Hasil akhirnya adalah 4 nilai di file `.env`:
 
 | Variabel | Didapat dari |
 |---|---|
-| `GOOGLE_ADS_DEVELOPER_TOKEN` | Langkah 2 (Pusat API di MCC) |
-| `GOOGLE_ADS_CLIENT_ID` | Langkah 4 (Google Cloud) |
-| `GOOGLE_ADS_CLIENT_SECRET` | Langkah 4 (Google Cloud) |
+| `GOOGLE_ADS_CLIENT_ID` | Langkah 3 (Google Cloud) |
+| `GOOGLE_ADS_CLIENT_SECRET` | Langkah 3 (Google Cloud) |
 | `GOOGLE_ADS_REFRESH_TOKEN` | Langkah 5 (script) |
-| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Langkah 1 (ID akun MCC) |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Langkah 1 (ID akun MCC, bukan rahasia) |
 
-> ⚠️ Jangan pernah mengirim nilai-nilai ini lewat chat, email, atau commit ke GitHub.
+`GOOGLE_ADS_DEVELOPER_TOKEN` opsional — boleh dikosongkan.
+
+> ⚠️ Jangan pernah mengirim client secret / refresh token lewat chat, email, atau commit ke GitHub.
 > File `.env` dan `client_secret*.json` sudah di-`.gitignore`.
 
 ---
@@ -28,39 +34,39 @@ Hasil akhirnya adalah 5 nilai rahasia di file `.env`:
    masukkan ID akun klien (mis. Tiga Pilar `582-757-2362`) → **Kirim permintaan**.
 6. Login ke akun klien → **Admin → Akses dan keamanan → tab Pengelola** → **Terima** permintaan.
 
-## Langkah 2 — Ajukan Developer Token
+## Langkah 2 — Project Google Cloud + aktifkan Google Ads API
 
-1. Masuk ke **akun MCC** (bukan akun klien).
-2. Menu **Admin → Pusat API** (API Center).
-   Kalau menu ini tidak muncul, pastikan Anda sedang berada di akun MCC.
-3. Isi formulir: nama perusahaan, URL situs, email kontak API, centang persetujuan Ketentuan API → **Kirim**.
-4. Token langsung muncul dengan level **Test Account / Explorer**.
-   Salin → nilai `GOOGLE_ADS_DEVELOPER_TOKEN`.
+1. Buka <https://console.cloud.google.com/> (login budi3pilar@gmail.com) → **Select a project → New project**
+   → nama `adsai` → **Create**.
+2. **Billing**: tautkan akun penagihan ke project (Billing → Link a billing account). Project tanpa penagihan
+   atau masih *Free Trial* bisa ditolak untuk Explorer/Basic. Google Ads API sendiri **gratis**; kartu hanya
+   untuk verifikasi.
+3. **APIs & Services → Library** → cari **Google Ads API** → **Enable**.
 
-## Langkah 3 — Ajukan Basic Access (agar bisa dipakai di akun sungguhan)
+## Langkah 3 — Layar persetujuan OAuth, verifikasi merek, dan OAuth client
 
-Token level Test hanya bisa membaca **akun test**. Untuk akun klien sungguhan:
+1. **Google Auth Platform** (APIs & Services → OAuth consent screen):
+   - **Branding**: nama aplikasi `AdsAi`, email dukungan, logo (opsional), **homepage https://tigapilar.co.id**,
+     link kebijakan privasi (halaman di situs Anda), domain resmi `tigapilar.co.id`.
+   - **Audience**: User type **External** → tambahkan budi3pilar@gmail.com sebagai **Test user**.
+   - Domain harus diverifikasi lewat **Google Search Console** dengan akun yang sama (biasanya sudah ada bila
+     situs terdaftar di Search Console).
+   - Klik **Verify branding / Submit for verification**. Ini **verifikasi merek** yang wajib sebelum Basic Access.
+2. **Clients → Create client** → Application type **Desktop app** → nama `AdsAi Desktop` → **Create**
+   → **Download JSON** → simpan sebagai `client_secret.json` di folder proyek (jangan dibagikan).
 
-1. Di **Pusat API**, klik **Ajukan Akses Dasar (Apply for Basic Access)**.
-2. Contoh jawaban untuk formulir (sesuaikan):
-   - *Business model*: Agensi digital marketing yang mengelola Google Ads untuk klien sendiri.
-   - *Tool usage*: Tool internal untuk membaca laporan performa, audit konversi, dan mengelola
-     kata kunci negatif/budget akun klien yang tertaut di MCC kami. Tidak dijual ke pihak lain.
-   - *Who uses it*: Tim internal agensi saja.
-   - *Design document*: boleh lampirkan README repo ini (export PDF).
-3. Tunggu email dari Google (biasanya 3–7 hari kerja). Selama menunggu, Fase 1 tetap bisa
-   dites dengan **akun test** (buat di <https://ads.google.com/aw/overview> dengan MCC test).
+## Langkah 4 — Ajukan Basic Access (di Cloud Console)
 
-## Langkah 4 — Buat OAuth Client di Google Cloud
-
-1. Buka <https://console.cloud.google.com/> → pilih/buat project baru (mis. `adsai`).
-2. **APIs & Services → Library** → cari **Google Ads API** → **Enable**.
-3. **APIs & Services → OAuth consent screen** (Google Auth Platform):
-   - User type: **External** → isi nama aplikasi (`AdsAi`), email support, email developer → simpan.
-   - Bagian **Audience / Test users**: tambahkan email Google yang dipakai login Google Ads.
-4. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
-   - Application type: **Desktop app** → nama `AdsAi Desktop` → **Create**.
-   - Klik **Download JSON** → simpan sebagai `client_secret.json` di folder proyek ini.
+1. **APIs & Services → Enabled APIs → Google Ads API** → halaman **Overview** (Google Ads API Overview).
+2. Buka bagian **Upgrade access level** → **Apply for access** → pilih **Basic**.
+   Butuh peran Owner / Editor di project.
+3. Jawaban formulir (sesuaikan, harus konsisten dengan situs):
+   - *Business model*: perusahaan/agensi yang mengelola Google Ads untuk akun sendiri dan klien yang tertaut
+     di MCC 221-446-0264.
+   - *Tool usage*: tool internal untuk membaca laporan performa, audit konversi, dan mengelola kata kunci
+     negatif/budget/iklan. Tidak dijual ke pihak lain; hanya dipakai tim internal.
+4. Menurut Google, pengajuan Basic **ditinjau otomatis dalam hitungan menit** setelah verifikasi merek selesai.
+   Sebelum disetujui, project ada di level **Test** (hanya akun uji) — error `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`.
 
 ## Langkah 5 — Buat Refresh Token
 
@@ -83,7 +89,7 @@ Script mencetak `CLIENT_ID`, `CLIENT_SECRET`, dan `REFRESH_TOKEN`.
 
 ```bash
 cp .env.example .env      # Windows: copy .env.example .env
-# isi kelima nilai di .env, plus GOOGLE_ADS_DEFAULT_CUSTOMER_ID=5827572362 (opsional)
+# isi keempat nilai di .env, plus GOOGLE_ADS_DEFAULT_CUSTOMER_ID=5827572362 (opsional)
 ```
 
 Lanjut ke bagian **"Pasang di Claude Desktop"** di README.
@@ -92,11 +98,11 @@ Lanjut ke bagian **"Pasang di Claude Desktop"** di README.
 
 ### Checklist
 
-- [ ] Akun MCC dibuat, ID dicatat
-- [ ] Akun klien tertaut ke MCC
-- [ ] Developer token didapat
-- [ ] Basic Access diajukan (menunggu approval)
-- [ ] Google Ads API di-enable di Google Cloud
+- [x] Akun MCC dibuat — TigapilarAdsAi `221-446-0264`
+- [x] PT Tiga PILAR `582-757-2362` tertaut ke MCC (Aktif)
+- [ ] Project Google Cloud + penagihan + Google Ads API di-enable
+- [ ] Branding OAuth + verifikasi merek
 - [ ] OAuth client (Desktop) dibuat, `client_secret.json` di-download
+- [ ] Basic Access diajukan & disetujui (Cloud Console)
 - [ ] Refresh token dibuat
 - [ ] `.env` terisi

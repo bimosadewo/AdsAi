@@ -21,8 +21,13 @@ HINTS: dict[str, str] = {
                               "GOOGLE_ADS_LOGIN_CUSTOMER_ID berisi ID MCC (tanpa tanda hubung).",
     "CUSTOMER_NOT_ENABLED": "Akun Google Ads belum aktif / dibatalkan (biasanya belum ada penagihan). Aktifkan di UI.",
     "CUSTOMER_NOT_FOUND": "Customer ID tidak ditemukan. Panggil list_accounts / list_clients untuk ID yang benar.",
-    "DEVELOPER_TOKEN_NOT_APPROVED": "Developer token masih Test Access — hanya bisa ke akun uji. Ajukan Basic Access "
-                                    "(lihat docs/FASE-0-AKSES.md).",
+    "DEVELOPER_TOKEN_NOT_APPROVED": "Akses masih level Test — hanya bisa ke akun uji. Ajukan Basic Access di Google "
+                                    "Cloud Console → Google Ads API → Overview (lihat docs/FASE-0-AKSES.md).",
+    "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION": "Project Google Cloud belum disetujui untuk akun sungguhan. Selesaikan "
+                                                 "verifikasi merek lalu ajukan Basic Access di Cloud Console → Google "
+                                                 "Ads API → Overview → Upgrade access level (docs/FASE-0-AKSES.md).",
+    "CLOUD_PROJECT_NOT_FOUND": "Project Google Cloud pemilik OAuth client tidak ditemukan/nonaktif. Cek project di "
+                               "Cloud Console dan buat ulang refresh token dengan OAuth client project itu.",
     "DEVELOPER_TOKEN_PROHIBITED": "Developer token tidak boleh dipakai dengan project Google Cloud ini.",
     "NOT_ADS_USER": "Akun Google yang login tidak terhubung ke akun Google Ads mana pun.",
     "TWO_STEP_VERIFICATION_NOT_ENROLLED": "Akun Google yang login wajib mengaktifkan verifikasi 2 langkah.",

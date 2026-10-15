@@ -10,8 +10,9 @@ from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Sejak 9 Sep 2026 developer token tidak lagi menentukan akses (diabaikan Google); tingkat akses melekat pada
+# project Google Cloud pemilik OAuth client. GOOGLE_ADS_DEVELOPER_TOKEN tetap diterima bila ada, tapi opsional.
 REQUIRED = (
-    "GOOGLE_ADS_DEVELOPER_TOKEN",
     "GOOGLE_ADS_CLIENT_ID",
     "GOOGLE_ADS_CLIENT_SECRET",
     "GOOGLE_ADS_REFRESH_TOKEN",
@@ -79,12 +80,13 @@ class Settings:
 
     def to_google_ads_dict(self) -> dict:
         cfg = {
-            "developer_token": self.developer_token,
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "refresh_token": self.refresh_token,
             "use_proto_plus": True,
         }
+        if self.developer_token:
+            cfg["developer_token"] = self.developer_token
         if self.login_customer_id:
             cfg["login_customer_id"] = self.login_customer_id
         return cfg
@@ -111,7 +113,7 @@ def load_settings() -> Settings:
             + ". Salin .env.example menjadi .env dan isi nilainya."
         )
     return Settings(
-        developer_token=os.environ["GOOGLE_ADS_DEVELOPER_TOKEN"],
+        developer_token=os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
         client_id=os.environ["GOOGLE_ADS_CLIENT_ID"],
         client_secret=os.environ["GOOGLE_ADS_CLIENT_SECRET"],
         refresh_token=os.environ["GOOGLE_ADS_REFRESH_TOKEN"],
