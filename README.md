@@ -18,7 +18,7 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 
 | Fase | Isi | Status |
 |---|---|---|
-| 0 | Akses Google Ads API (MCC, developer token, OAuth) | 📋 Dikerjakan pemilik: [panduan](docs/FASE-0-AKSES.md) |
+| 0 | Akses Google Ads API (MCC, project Cloud, OAuth) | ✅ 15 Okt 2026 — terhubung ke akun produksi ([panduan](docs/FASE-0-AKSES.md)) |
 | 1 | 8 tools baca | ✅ |
 | 2 | 7 tools ubah + pengaman + log audit | ✅ |
 | 3 | Daftar klien, cek kesehatan, laporan mingguan, kirim WA/email, CLI terjadwal | ✅ |

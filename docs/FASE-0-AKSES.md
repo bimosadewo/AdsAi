@@ -101,9 +101,9 @@ Lanjut ke bagian **"Pasang di Claude Desktop"** di README.
 
 - [x] Akun MCC dibuat — TigapilarAdsAi `221-446-0264`
 - [x] PT Tiga PILAR `582-757-2362` tertaut ke MCC (Aktif)
-- [ ] Project Google Cloud + penagihan + Google Ads API di-enable
-- [ ] Branding OAuth + verifikasi merek
-- [ ] OAuth client (Desktop) dibuat, `client_secret.json` di-download
-- [ ] Basic Access diajukan & disetujui (Cloud Console)
-- [ ] Refresh token dibuat
-- [ ] `.env` terisi
+- [x] Project Google Cloud `adsai-511706` + Google Ads API di-enable
+- [x] Branding OAuth, status **In production**
+- [x] OAuth client (Desktop) dibuat, `client_secret.json` di `C:\Dokumen_C\AdsAi`
+- [x] Akses Explorer diajukan — panggilan ke akun produksi Tiga Pilar berhasil (15 Okt 2026)
+- [x] Refresh token dibuat, `.env` terisi lewat script
+- [ ] (Nanti) Basic Access bila klien bertambah / kuota harian Explorer tidak cukup
