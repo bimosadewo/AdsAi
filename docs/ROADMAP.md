@@ -68,7 +68,7 @@ Detail: [BELAJAR-DARI-ADSPIRER.md](BELAJAR-DARI-ADSPIRER.md) §4.
 | ✅ Selesai | Diagnosis: `suggest_next_action`, `verify_campaign_is_live`, `why_did_this_fail`, `explain_error`; penerjemah error + coba ulang otomatis |
 | ✅ Selesai | Strategi klien (AVOID/PREFER/CONSTRAINT/REQUIRE + Decision Log) terhubung ke usulan negatif & dossier |
 | ✅ Selesai | Bid kata kunci & hapus kata kunci (gerbang `confirm_delete`) |
-| Tinggi | Keyword research (KeywordPlanIdeaService, geo Indonesia 2360 + bahasa id): niat via persentil CPC (≥P75 / P25–P75 / <P25), buang frasa sampah, fallback 20 teratas berlabel volume rendah, 3 tingkat budget Rp |
+| ✅ Selesai | Riset kata kunci Keyword Planner untuk Indonesia (`research_keywords`) |
 | Tinggi | Monitor + antrean persetujuan: aturan per klien (`consecutive_days`, uji kering), usulan tindakan kedaluwarsa 48 jam, mode *shadow*, maks ±20% per putaran |
 | Sedang | Ekstensi tingkat akun (selain kampanye & grup iklan) + cegah aset telepon ganda |
 | Sedang | Deteksi kampanye broad-only (AI Max) sebelum menambah EXACT/PHRASE; deteksi strategi bidding portofolio |

@@ -268,6 +268,14 @@ akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–
   → AdsAi sudah lebih aman di ketiga titik: pratinjau `validate_only` menangkap penolakan sebelum eksekusi,
   status yang ditawarkan hanya ENABLED/HIDDEN, dan verifikasi membaca langsung dari API (tanpa cache).
 
+- **Riset kata kunci untuk Geopipe (uji 15 Okt):** `research_keywords` dengan lokasi "Indonesia" + bahasa "id":
+  percobaan 1 (8 seed spesifik) → hanya "geopipe" (320/bln, CPC ±Rp20.809); 7 seed lain hilang tanpa
+  penjelasan; rekomendasi budget Rp1.040.451/hari (50 klik × CPC) — tidak realistis untuk UKM.
+  Percobaan 2 (seed umum "pipa hdpe", "pipa drainase", …) → `returned_by_google: 0`. Riset mereka tidak
+  andal untuk Indonesia/B2B niche.
+  → **Diterapkan:** AdsAi `research_keywords` sendiri (geo 2360 + bahasa 1025 eksplisit, metrik historis untuk
+  setiap seed, tanpa ambang volume, niat dari persentil bid + kata beli/informasi, budget 10/20/40 klik).
+
 Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Search).
 
 ## 6. Log observasi (tambahkan setiap sesi)
