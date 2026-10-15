@@ -13,3 +13,8 @@ logs/
 clients.yaml
 dossiers/
 strategi/
+
+# unduhan & installer yang tidak boleh ikut ter-commit
+*.exe
+*.zip
+AdsAi-main*/
