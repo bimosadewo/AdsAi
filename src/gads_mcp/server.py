@@ -10,7 +10,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import analysis, diagnostics, dossier, errors, extensions, gaql, rsa, strategy, structure, targeting
+from . import analysis, diagnostics, dossier, errors, extensions, gaql, goals, rsa, strategy, structure, targeting
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
 from .collect import collect_snapshot, daily_rows, q_daily, today_local
@@ -813,6 +813,28 @@ def budget_pacing(client: str | None = None, customer_id: str | None = None,
 
 
 # ---------------------------------------------------------------------------
+# Sasaran konversi kampanye
+# ---------------------------------------------------------------------------
+
+@tool
+def campaign_conversion_goals(campaign_id: str, customer_id: str | None = None) -> dict:
+    """Sasaran konversi yang dipakai kampanye (default akun vs khusus kampanye), konversi Utama di tiap sasaran,
+    dan statusnya: OK / TANPA_KONVERSI_UTAMA (bidding tanpa sinyal) / TIDAK_LENGKAP. Pakai bila status kampanye
+    LIMITED dengan alasan UNKNOWN, atau UI berkata "sasaran tidak memiliki tindakan konversi utama"."""
+    a = ads()
+    return {"customer_id": a.customer_id(customer_id),
+            **goals.Goals(mutator()).read(a.customer_id(customer_id), campaign_id)}
+
+
+@write_tool
+def use_account_conversion_goals(campaign_id: str, customer_id: str | None = None, confirm: bool = False) -> dict:
+    """Kembalikan kampanye ke sasaran konversi default akun (setara "Gunakan sasaran default akun" di UI).
+    Ditolak bila sasaran default akun pun tidak berisi konversi Utama aktif."""
+    a = ads()
+    return goals.Goals(mutator()).use_account_goals(a.customer_id(customer_id), campaign_id, confirm)
+
+
+# ---------------------------------------------------------------------------
 # Kata kunci: bid & hapus
 # ---------------------------------------------------------------------------
 
@@ -859,13 +881,23 @@ def suggest_next_action(client: str) -> dict:
 @tool
 def verify_campaign_is_live(campaign_id: str, customer_id: str | None = None) -> dict:
     """Cek langsung ke Google apakah kampanye benar-benar bisa tayang: status, budget > 0, status utama Google
-    (+alasannya), grup iklan aktif, iklan aktif yang tidak ditolak, kata kunci aktif (Search), tayangan kemarin.
+    (+alasannya), grup iklan aktif, iklan aktif yang tidak ditolak, kata kunci aktif (Search), tayangan kemarin,
+    dan apakah sasaran konversinya berisi konversi Utama.
     Pakai setelah mengaktifkan kampanye atau saat klien bilang iklannya tidak muncul."""
     a = ads()
     cid = a.customer_id(customer_id)
     camp = str(int(str(campaign_id).strip()))
     data = {k: a.search(cid, q) for k, q in diagnostics.live_queries(camp).items()}
-    return {"customer_id": cid, **diagnostics.assess_live(data)}
+    out = {"customer_id": cid, **diagnostics.assess_live(data)}
+    if out.get("vonis") != "TIDAK_DITEMUKAN":
+        try:
+            g = goals.Goals(mutator()).read(cid, camp)
+            out["sasaran_konversi"] = {"status": g["status"], "sumber": g["sumber_sasaran"], "pesan": g["pesan"]}
+            if g["status"] == "TANPA_KONVERSI_UTAMA":
+                out.setdefault("saran", []).append(g["pesan"])
+        except (AdsError, ValueError) as ex:
+            out["sasaran_konversi"] = {"status": "TIDAK_LENGKAP", "pesan": str(ex)}
+    return out
 
 
 @tool

@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode sudah dites dengan simulasi Google Ads (102 tes). Begitu developer token & OAuth dari
+Semua kode sudah dites dengan simulasi Google Ads (108 tes). Begitu developer token & OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (61)
+## Tools MCP (63)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -52,6 +52,8 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `update_conversion_action` | Utama/Sekunder, cara hitung, jangka waktu, status |
 | `update_bid_strategy` | Maks. konversi (± target CPA), maks. klik (± CPC maks), CPC manual |
 | `add_keywords` | Tambah kata kunci ke grup iklan |
+| `campaign_conversion_goals` | Sasaran konversi kampanye (default akun / khusus kampanye) + konversi Utama per sasaran; deteksi "tanpa konversi Utama" yang dilaporkan API sebagai UNKNOWN |
+| `use_account_conversion_goals` | Kembalikan kampanye ke sasaran default akun (ditolak bila default akun pun kosong) |
 | `update_keyword_bids` | Bid CPC kata kunci (maks 2× per perubahan; peringatan bila Smart Bidding mengabaikannya) |
 | `remove_keywords` | Hapus permanen kata kunci — butuh `confirm_delete=true` (untuk berhenti sementara: `set_status`) |
 | `change_log` | Riwayat perubahan lewat AdsAi |
@@ -141,7 +143,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 102 tes
+   pytest                           # opsional: 108 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -246,9 +248,10 @@ src/gads_mcp/
   dossier.py    kit dossier klien untuk agen AI + klasifikasi jenis akun
   strategy.py   arahan strategi klien (strategi/<klien>.md)
   diagnostics.py langkah berikutnya, cek tayang, kegagalan terakhir
+  goals.py      sasaran konversi tingkat kampanye
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     61 tools MCP
+  server.py     63 tools MCP
   cli.py        perintah `adsai`
 ```
