@@ -78,12 +78,13 @@ cd AdsAi
 python -m venv .venv
 # Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
 pip install -e .
-python scripts/generate_refresh_token.py --client-secrets client_secret.json
+python scripts/generate_refresh_token.py --login-customer-id 221-446-0264 --default-customer-id 582-757-2362
 ```
 
 Browser akan terbuka → login dengan akun Google yang punya akses MCC → **Izinkan**.
 Kalau muncul "Google hasn't verified this app", klik **Lanjutkan** (aplikasi Anda sendiri).
-Script mencetak `CLIENT_ID`, `CLIENT_SECRET`, dan `REFRESH_TOKEN`.
+Script menulis `CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`, ID MCC, dan akun default **langsung ke `.env`**
+(tidak dicetak ke layar). Status OAuth harus **In production** — bila masih *Testing*, refresh token kedaluwarsa 7 hari.
 
 ## Langkah 6 — Isi `.env` dan uji
 
