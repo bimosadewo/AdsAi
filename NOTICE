@@ -28,3 +28,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Kode server AdsAi (src/gads_mcp/) ditulis sendiri dan tidak berasal dari Adspirer.
+
+
+---
+
+src/gads_mcp/ui/ext-apps-2.0.3.js adalah bundel tanpa modifikasi dari paket npm
+@modelcontextprotocol/ext-apps 2.0.3 (MCP Apps SDK, https://github.com/modelcontextprotocol/ext-apps),
+berlisensi Apache-2.0 / MIT — teks lisensi lengkap di src/gads_mcp/ui/ext-apps-LICENSE.txt.

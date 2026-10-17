@@ -38,7 +38,9 @@ jangan jalankan. Perubahan adalah tugas `adsai-optimasi`.
 
 ## Buat mudah dilihat
 
-Tawarkan **artifact** (halaman visual pribadi yang bisa diperbarui di URL yang sama): kotak angka
+Untuk "tampilkan performa/hasil iklan", panggil **`performance_dashboard`** — tampil sebagai kartu interaktif
+(tab 7/14/30/90 hari, Ringkasan/Kampanye/Insight). Setelah kartu tampil cukup 2–4 kalimat kesimpulan; jangan
+mengulang tabel angka. Untuk laporan yang bisa dibagikan, tawarkan **artifact** (halaman visual pribadi yang bisa diperbarui di URL yang sama): kotak angka
 (biaya, klik, konversi, biaya/konversi — Rupiah), grafik harian biaya vs konversi (SVG/CSS), tabel per
 kampanye, dan temuan/alert di atas. Data dari `campaign_performance` + `client_health`.
 

@@ -6,11 +6,12 @@ import functools
 from datetime import timedelta
 from typing import Any, Callable
 
+from mcp.server.apps import Apps
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, diagnostics, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
+from . import (analysis, dashboard, diagnostics, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -33,13 +34,52 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
 - Mulai sesi per klien dengan suggest_next_action dan baca client_strategy: arahan AVOID/PREFER/
   CONSTRAINT/REQUIRE wajib dihormati; simpan keputusan baru (add_strategy_directive) hanya bila pengguna
   memutuskannya secara eksplisit.
+- "Tampilkan performa/hasil iklan" → performance_dashboard (kartu interaktif); lalu cukup kesimpulan singkat.
 - Jangan mengarang angka; bila tool gagal, baca 'Saran' di pesannya atau panggil why_did_this_fail —
   jangan mengulang dengan argumen tebakan. Setelah timeout, baca kondisi terkini dulu.
 - "Jeda/hentikan" = set_status PAUSED, bukan remove_*. Menghapus butuh confirm_delete=true.
 - Untuk kebutuhan yang tidak tercakup tool lain, pakai run_query dengan GAQL.
 """
 
-mcp = MCPServer("google-ads", instructions=INSTRUCTIONS)
+# ---------------------------------------------------------------------------
+# Kartu dashboard interaktif (MCP Apps). Harus terdaftar sebelum MCPServer dibuat.
+# ---------------------------------------------------------------------------
+
+apps = Apps()
+apps.add_html_resource(dashboard.RESOURCE_URI, dashboard.html(), name="AdsAi dashboard",
+                       title="Dashboard performa Google Ads", prefers_border=True)
+
+
+@apps.tool(resource_uri=dashboard.RESOURCE_URI, visibility=["model", "app"],
+           annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
+def performance_dashboard(customer_id: str | None = None, client: str | None = None, days: int = 7,
+                          start: str | None = None, end: str | None = None) -> dict:
+    """Dashboard performa Google Ads yang tampil sebagai KARTU INTERAKTIF di Claude: kotak angka (biaya, klik,
+    konversi, biaya/konversi, tayangan, CTR, CPC) dengan perbandingan periode setara, grafik harian biaya vs
+    konversi, tabel per kampanye (termasuk tayangan hilang karena budget), dan temuan. Tab rentang 7/14/30/90 hari
+    bisa diklik di kartu. Default: 7 hari sampai kemarin (hari ini belum lengkap); start/end (YYYY-MM-DD) untuk
+    rentang khusus, mis. kemarin saja: start=end=tanggal kemarin. Data langsung dari Google Ads, bukan cache.
+    Pakai tool ini untuk "tampilkan performa iklan"; setelah kartu tampil cukup tulis 2–4 kalimat kesimpulan."""
+    try:
+        a = ads()
+        cl = None
+        if client:
+            cl = find_client(load_clients(a.settings.clients_file), client)
+            cid = cl.customer_id
+        else:
+            cid = a.customer_id(customer_id)
+            try:
+                cl = next((c for c in load_clients(a.settings.clients_file).values() if c.customer_id == cid), None)
+            except Exception:  # noqa: BLE001 — clients.yaml opsional
+                cl = None
+        d = dashboard.fetch(a, cid, days, start, end, client=cl)
+        return {**d, "ringkasan": dashboard.text_summary(d)}
+    except (AdsError, ValueError, RuntimeError) as ex:
+        _record_failure("performance_dashboard", {"customer_id": customer_id, "client": client}, ex)
+        raise ToolError(str(ex)) from ex
+
+
+mcp = MCPServer("google-ads", instructions=INSTRUCTIONS, extensions=[apps])
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=True)
 

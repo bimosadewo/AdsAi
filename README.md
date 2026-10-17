@@ -25,10 +25,10 @@ Pelajaran dari Adspirer: [docs/BELAJAR-DARI-ADSPIRER.md](docs/BELAJAR-DARI-ADSPI
 | 4 | N-gram, usulan negatif otomatis, deteksi anomali, pacing budget | ✅ |
 | 5 | SaaS (klien login sendiri) | 🅿️ Ditunda — [rancangan](docs/FASE-5-SAAS.md) |
 
-Semua kode dites dengan simulasi Google Ads (112 tes) dan sudah tersambung ke akun produksi sejak 15 Okt 2026. Setelah OAuth dari
+Semua kode dites dengan simulasi Google Ads (117 tes) dan sudah tersambung ke akun produksi sejak 15 Okt 2026. Setelah OAuth dari
 Fase 0 tersedia, cukup isi `.env` — tidak ada kode yang perlu diubah.
 
-## Tools MCP (64)
+## Tools MCP (65)
 
 **Baca (Fase 1)**
 | Tool | Fungsi |
@@ -52,6 +52,7 @@ apa pun; `confirm=true` = dijalankan dan dicatat di log audit.
 | `update_conversion_action` | Utama/Sekunder, cara hitung, jangka waktu, status |
 | `update_bid_strategy` | Maks. konversi (± target CPA), maks. klik (± CPC maks), CPC manual |
 | `add_keywords` | Tambah kata kunci ke grup iklan |
+| `performance_dashboard` | **Kartu dashboard interaktif di Claude** (MCP Apps): kotak angka + perbandingan periode setara, grafik harian, tabel kampanye, insight; tab 7/14/30/90 hari. Data langsung dari Google, Rupiah, Bahasa Indonesia |
 | `research_keywords` | Keyword Planner untuk Indonesia (geo 2360, bahasa 1025): volume, bid atas halaman (Rp), niat BELI/TINGGI/SEDANG/RENDAH/INFORMASI, kandidat iklan & negatif, budget 10/20/40 klik/hari. Seed selalu tampil; tanpa ambang volume yang mengosongkan hasil |
 | `campaign_conversion_goals` | Sasaran konversi kampanye (default akun / khusus kampanye) + konversi Utama per sasaran; deteksi "tanpa konversi Utama" yang dilaporkan API sebagai UNKNOWN |
 | `use_account_conversion_goals` | Kembalikan kampanye ke sasaran default akun (ditolak bila default akun pun kosong) |
@@ -144,7 +145,7 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
    python -m venv .venv
    source .venv/bin/activate        # Windows: .venv\Scripts\activate
    pip install -e ".[dev]"
-   pytest                           # opsional: 112 tes
+   pytest                           # opsional: 117 tes
    ```
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
@@ -251,9 +252,11 @@ src/gads_mcp/
   diagnostics.py langkah berikutnya, cek tayang, kegagalan terakhir
   goals.py      sasaran konversi tingkat kampanye
   keyword_research.py riset kata kunci Keyword Planner (Indonesia)
+  dashboard.py  kartu dashboard interaktif (MCP Apps) + data dashboard
+  ui/           SDK resmi @modelcontextprotocol/ext-apps (dibundel, tanpa CDN)
   reports.py    laporan mingguan & teks alert (WhatsApp/Markdown)
   notify.py     WhatsApp (Fonnte / webhook) & email
   service.py    alur tingkat klien (dipakai server & CLI)
-  server.py     64 tools MCP
+  server.py     65 tools MCP
   cli.py        perintah `adsai`
 ```

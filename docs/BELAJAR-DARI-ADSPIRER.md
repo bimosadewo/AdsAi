@@ -288,6 +288,11 @@ akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–
   → Diterapkan: skill `adsai-review` (+artifact, +jadwal, +aturan ROAS akun prospek, +jangan percaya skor
   audit mentah). Backlog: tool audit tracking AdsAi berskor yang memeriksa aksi ringan Utama & status tag.
 
+- **Bentuk laporan (17 Okt):** kartu dashboard Adspirer = **MCP Apps** (tool `_meta.ui.resourceUri` → resource
+  `ui://` HTML yang dirender host di iframe; data dikirim lewat `ui/notifications/tool-result`; tab rentang
+  memanggil ulang tool lewat `tools/call`). → **Diterapkan:** `performance_dashboard` AdsAi dengan SDK resmi
+  ext-apps 2.0.3 (dibundel lokal), tema terang/gelap mengikuti host, Rupiah, data langsung dari API.
+
 Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Search).
 
 ## 6. Log observasi (tambahkan setiap sesi)
