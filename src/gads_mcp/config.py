@@ -103,9 +103,14 @@ def find_env_file() -> Path | None:
     return None
 
 
+def _cred(name: str) -> str:
+    """Nilai kredensial tanpa spasi, baris baru, atau tanda kutip yang ikut tersalin (mis. ke Secret Manager)."""
+    return os.getenv(name, "").strip().strip('"\'').strip()
+
+
 def load_settings() -> Settings:
     load_dotenv(find_env_file())
-    missing = [k for k in REQUIRED if not os.getenv(k)]
+    missing = [k for k in REQUIRED if not _cred(k)]
     if missing:
         raise RuntimeError(
             "Variabel environment belum diisi: "
@@ -113,10 +118,10 @@ def load_settings() -> Settings:
             + ". Salin .env.example menjadi .env dan isi nilainya."
         )
     return Settings(
-        developer_token=os.getenv("GOOGLE_ADS_DEVELOPER_TOKEN", ""),
-        client_id=os.environ["GOOGLE_ADS_CLIENT_ID"],
-        client_secret=os.environ["GOOGLE_ADS_CLIENT_SECRET"],
-        refresh_token=os.environ["GOOGLE_ADS_REFRESH_TOKEN"],
+        developer_token=_cred("GOOGLE_ADS_DEVELOPER_TOKEN"),
+        client_id=_cred("GOOGLE_ADS_CLIENT_ID"),
+        client_secret=_cred("GOOGLE_ADS_CLIENT_SECRET"),
+        refresh_token=_cred("GOOGLE_ADS_REFRESH_TOKEN"),
         login_customer_id=normalize_customer_id(os.getenv("GOOGLE_ADS_LOGIN_CUSTOMER_ID")),
         default_customer_id=normalize_customer_id(os.getenv("GOOGLE_ADS_DEFAULT_CUSTOMER_ID")),
         safety=Safety.from_env(),

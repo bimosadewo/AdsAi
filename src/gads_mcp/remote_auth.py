@@ -264,7 +264,7 @@ def from_env() -> tuple[GoogleLoginProvider, AuthSettings] | None:
                if not os.getenv(k)]
     if missing:
         raise RuntimeError(f"Mode online butuh variabel: {', '.join(missing)}")
-    provider = GoogleLoginProvider(public, os.environ["ADSAI_LOGIN_CLIENT_ID"], os.environ["ADSAI_LOGIN_CLIENT_SECRET"],
+    provider = GoogleLoginProvider(public, os.environ["ADSAI_LOGIN_CLIENT_ID"].strip(), os.environ["ADSAI_LOGIN_CLIENT_SECRET"].strip(),
                                    os.environ["ADSAI_ALLOWED_EMAILS"].split(","),
                                    JsonStore(Path(os.getenv("ADSAI_AUTH_STORE") or "/data/auth.json")))
     settings = AuthSettings(
