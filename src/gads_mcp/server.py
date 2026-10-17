@@ -87,8 +87,8 @@ if _remote:
     async def _google_callback(request):
         return await _remote[0].handle_callback(request)
 
-    @mcp.custom_route("/healthz", methods=["GET"], include_in_schema=False)
-    async def _healthz(request):
+    @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
+    async def _health(request):
         from starlette.responses import PlainTextResponse
         return PlainTextResponse("ok")
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True)

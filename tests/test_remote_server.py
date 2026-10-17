@@ -56,7 +56,7 @@ def base(tmp_path_factory):
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for _ in range(100):
         try:
-            if call(url + "/healthz")[0] == 200:
+            if call(url + "/health")[0] == 200:
                 break
         except OSError:
             pass
