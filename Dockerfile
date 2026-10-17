@@ -3,7 +3,7 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 \
     ADSAI_AUDIT_LOG_DIR=/data/logs ADSAI_CLIENTS_FILE=/data/clients.yaml \
-    ADSAI_STRATEGY_DIR=/data/strategi ADSAI_DOSSIER_DIR=/data/dossiers ADSAI_AUTH_STORE=/data/auth.json ADSAI_MONITORS_FILE=/data/monitors.json
+    ADSAI_STRATEGY_DIR=/data/strategi ADSAI_DOSSIER_DIR=/data/dossiers ADSAI_AUTH_STORE=/data/auth.json ADSAI_MONITORS_FILE=/data/monitors.json ADSAI_PROPOSALS_FILE=/data/proposals.json
 
 WORKDIR /app
 COPY pyproject.toml README.md NOTICE ./

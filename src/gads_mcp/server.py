@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, monitors, rsa, strategy,
+from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -39,6 +39,9 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
   jangan mengulang dengan argumen tebakan. Setelah timeout, baca kondisi terkini dulu.
 - "Jeda/hentikan" = set_status PAUSED, bukan remove_*. Menghapus butuh confirm_delete=true.
 - Untuk kebutuhan yang tidak tercakup tool lain, pakai run_query dengan GAQL.
+- "Pindai akun" / laporan pagi → watch_scan. Alarm: create_monitor (multi-syarat, pratinjau dulu), test_monitor.
+- Saat pengguna tidak di tempat (mis. tugas terjadwal), JANGAN mengubah akun: masukkan usulan lewat
+  propose_change. Pengguna memutuskan dengan list_proposals → decide_proposal (setujui/tolak, confirm=true).
 """
 
 # ---------------------------------------------------------------------------
@@ -145,8 +148,12 @@ confirm=false (default): pratinjau + validasi Google, TIDAK mengubah apa pun.
 confirm=true: jalankan sungguhan dan catat di log audit. Hanya setelah pengguna setuju."""
 
 
+WRITE_TOOLS: dict[str, Callable] = {}
+
+
 def write_tool(fn: Callable) -> Callable:
     fn.__doc__ = (fn.__doc__ or "").rstrip() + CONFIRM_DOC
+    WRITE_TOOLS[fn.__name__] = fn
     return _register(fn, WRITE)
 
 
@@ -1152,6 +1159,81 @@ def watch_scan(customer_id: str | None = None, days: int = 7) -> dict:
                        f"konversi {k['konversi']['nilai']:,.1f}".replace(",", "."),
             "jumlah_temuan": len(items), "alarm_dinilai": len(alarm),
             "alarm_terpicu": sum(r["terpicu"] for r in alarm), "temuan": items}
+
+
+# ---------------------------------------------------------------------------
+# Antrean persetujuan (pengganti list_pending_actions / manage_action Adspirer)
+# ---------------------------------------------------------------------------
+
+@functools.partial(_register, annotations=LOCAL_WRITE)
+def propose_change(tool_name: str, arguments: dict, reason: str, source: str = "chat") -> dict:
+    """Masukkan usulan perubahan akun ke antrean persetujuan TANPA menjalankannya. tool_name: nama tool pengubah
+    (mis. add_negative_keywords, set_status, update_budget, update_keyword_bids); arguments: argumennya (tanpa
+    confirm). AdsAi langsung menjalankan pratinjau (validasi Google, tidak mengubah apa pun) dan menyimpannya.
+    reason: alasan berbasis data (angka, periode). Pakai ini dari pemindaian terjadwal / saat pengguna tidak di
+    tempat; pengguna memutuskan lewat decide_proposal. Usulan kedaluwarsa 72 jam."""
+    if tool_name in proposals.EXCLUDED or tool_name not in WRITE_TOOLS:
+        raise ValueError(f"'{tool_name}' bukan tool pengubah akun yang bisa diantrekan. Pilihan: "
+                         + ", ".join(sorted(set(WRITE_TOOLS) - proposals.EXCLUDED)))
+    args = proposals.clean_args(arguments)
+    preview = WRITE_TOOLS[tool_name](**args, confirm=False)
+    if not proposals.is_preview(preview):
+        return {"status": "TIDAK_DIANTREKAN", "alasan": "Pratinjau tidak menghasilkan perubahan.", "pratinjau": preview}
+    items = proposals.load()
+    dup = [i for i in items if i.status == proposals.PENDING and i.tool == tool_name and i.argumen == args]
+    if dup:
+        return {"status": "SUDAH_ADA", "usulan": dup[0].to_dict()}
+    p = proposals.Proposal(tool=tool_name, argumen=args, alasan=reason.strip()[:500],
+                           pratinjau=proposals.brief(preview), sumber=source[:40])
+    items.append(p)
+    proposals.save(items)
+    return {"status": "DIANTREKAN", "usulan": p.to_dict(),
+            "pesan": f"Menunggu persetujuan. Pengguna bisa bilang 'setujui usulan {p.id}' atau 'tolak usulan {p.id}'."}
+
+
+@tool
+def list_proposals(status: str = "MENUNGGU") -> dict:
+    """Daftar usulan perubahan di antrean persetujuan. status: MENUNGGU (default) | SEMUA | DISETUJUI | DITOLAK |
+    GAGAL | KEDALUWARSA. Tampilkan ke pengguna: id, apa yang berubah (sebelum → sesudah), alasan, umur usulan."""
+    items = proposals.load()
+    st = status.upper()
+    shown = items if st == "SEMUA" else [i for i in items if i.status == st]
+    return {"jumlah": len(shown), "menunggu": sum(i.status == proposals.PENDING for i in items),
+            "usulan": [i.to_dict() for i in reversed(shown)][:50]}
+
+
+@write_tool
+def decide_proposal(proposal_id: str, decision: str, confirm: bool = False) -> dict:
+    """Putuskan usulan di antrean. decision: setujui | tolak.
+    setujui + confirm=false: pratinjau ULANG pada kondisi akun sekarang (bisa berbeda dari saat diusulkan).
+    setujui + confirm=true: jalankan perubahan lewat tool aslinya (semua batas pengaman & log audit berlaku).
+    tolak: tandai ditolak (confirm=true untuk menyimpan). Hanya setelah pengguna jelas memutuskan."""
+    items = proposals.load()
+    p = proposals.find(items, proposal_id)
+    if p.status != proposals.PENDING:
+        raise ValueError(f"Usulan {p.id} berstatus {p.status}; hanya usulan MENUNGGU yang bisa diputuskan.")
+    d = decision.strip().lower()
+    if d not in ("setujui", "tolak", "approve", "reject"):
+        raise ValueError("decision harus 'setujui' atau 'tolak'.")
+    approve = d in ("setujui", "approve")
+    if not confirm:
+        fresh = WRITE_TOOLS[p.tool](**p.argumen, confirm=False) if approve else None
+        return {"status": "PRATINJAU", "keputusan": "setujui" if approve else "tolak", "usulan": p.to_dict(),
+                **({"pratinjau_sekarang": fresh} if fresh is not None else {}),
+                "pesan": "Belum diputuskan. Konfirmasi ke pengguna, lalu panggil lagi dengan confirm=true."}
+    p.diputuskan = proposals._now().isoformat(timespec="seconds")
+    if approve:
+        try:
+            p.hasil = WRITE_TOOLS[p.tool](**p.argumen, confirm=True)
+            p.status = proposals.APPROVED
+        except Exception as ex:  # noqa: BLE001 — catat kegagalan di antrean, lalu laporkan
+            p.status, p.hasil = proposals.FAILED, {"error": str(ex)}
+            proposals.save(items)
+            raise
+    else:
+        p.status = proposals.REJECTED
+    proposals.save(items)
+    return {"status": p.status, "usulan": p.to_dict()}
 
 
 def main() -> None:
