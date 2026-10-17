@@ -91,7 +91,19 @@ if _remote:
     @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def _health(request):
         from starlette.responses import PlainTextResponse
-        return PlainTextResponse("ok")
+        return PlainTextResponse(f"ok {code_version()}")
+def code_version() -> str:
+    """Sidik kode yang sedang berjalan (hash semua berkas paket) — cocokkan dengan lokal untuk memastikan deploy."""
+    import hashlib
+    from pathlib import Path
+    h = hashlib.sha256()
+    root = Path(__file__).parent
+    for f in sorted(p for p in root.rglob("*") if p.is_file() and p.suffix in (".py", ".js", ".txt")):
+        h.update(f.relative_to(root).as_posix().encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=True)
 

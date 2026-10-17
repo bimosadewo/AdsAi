@@ -173,3 +173,10 @@ def test_stale_session_after_restart_still_works(base):
         "name": "explain_error", "arguments": {"message": "USER_PERMISSION_DENIED"}}}, hdr)
     assert st == 200 and "MCC" in body, (st, body[:300])
     assert '"ui/resourceUri"' in call(url + "/mcp", {"jsonrpc": "2.0", "id": 10, "method": "tools/list"}, hdr)[2]
+
+
+def test_health_reports_code_version(base):
+    url, _ = base
+    from gads_mcp.server import code_version
+    st, _, body = call(url + "/health")
+    assert st == 200 and body == f"ok {code_version()}"
