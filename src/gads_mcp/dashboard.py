@@ -291,7 +291,7 @@ def q_keywords(s: date, e: date) -> str:
     return ("SELECT campaign.id, campaign.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, "
             "ad_group_criterion.quality_info.quality_score, ad_group_criterion.quality_info.search_predicted_ctr, "
             "ad_group_criterion.quality_info.creative_quality_score, "
-            "ad_group_criterion.quality_info.post_click_quality_score, metrics.cost_micros, metrics.clicks, "
+            "ad_group_criterion.quality_info.post_click_quality_score, metrics.cost_micros, metrics.clicks, metrics.impressions, "
             "metrics.conversions FROM keyword_view "
             f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
 
