@@ -322,3 +322,14 @@ Dari kartu Adspirer ("Low-quality keyword is draining budget · QS 3 · Fix or p
   tetap lewat pratinjau → persetujuan.
 - **Pelajaran teknis:** skrip kartu berbagi scope dengan SDK yang di-minify; nama `P` bentrok →
   SyntaxError dan kartu kosong. Kini ada tes `node --check` atas skrip gabungan.
+
+## Putaran 10 — Perbandingan 30 hari Adspirer vs AdsAi (17 Okt 2026)
+
+- **Rincian kata kunci & grup iklan Adspirer tertinggal 1 hari** (cache; totalnya live). Akibatnya
+  "harga plastik cor" (Rp28.357, 0 konv. menurut Adspirer) sebenarnya Rp64.253 dengan **1 konversi** pada
+  16 Okt, dan grup "Plastik Cor Umum" ditandai 0 konversi padahal di situlah konversinya. Mengikuti data itu
+  bisa menjeda kata kunci terbaik. AdsAi membaca semua rincian langsung dari API.
+- "ROAS 0 = rugi" masih muncul untuk akun prospek.
+- **Diadopsi:** rincian **per grup iklan** dan **kata kunci teratas** di tab Kampanye. Grup iklan menampilkan
+  biaya AI Max yang tidak tercatat di kata kunci (Kebutuhan Proyek Rp60.496/19 klik, kata kuncinya hampir
+  tidak tayang; Ukuran dan Ketebalan CPC ±Rp7.658, 0 konversi).

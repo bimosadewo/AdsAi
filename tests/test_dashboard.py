@@ -130,3 +130,16 @@ def test_app_script_parses_with_bundle(tmp_path):
     f.write_text(src, encoding="utf-8")
     r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_ad_groups_and_top_keywords():
+    ag = [{"campaign.name": "Plastik Cor", "ad_group.name": "Kebutuhan Proyek", "metrics.cost": 60496.36,
+           "metrics.clicks": 19, "metrics.impressions": 300, "metrics.conversions": 0},
+          {"campaign.name": "Plastik Cor", "ad_group.name": "Plastik Cor Umum", "metrics.cost": 103779.15,
+           "metrics.clicks": 18, "metrics.impressions": 400, "metrics.conversions": 1}]
+    g = db.ad_groups(ag)
+    assert [x["nama"] for x in g] == ["Plastik Cor Umum", "Kebutuhan Proyek"] and g[0]["konversi"] == 1
+    k = db.top_keywords([kw("plastik cor", "EXACT", 3, 37219, 7, 0, ctr="BELOW_AVERAGE"),
+                         kw("harga plastik cor", "PHRASE", 5, 64253, 10, 1), kw("nol", "EXACT", 5, 0, 0, 0)])
+    assert [x["teks"] for x in k] == ["harga plastik cor", "plastik cor"]
+    assert k[1]["lemah"] == ["perkiraan CTR", "landing page"]

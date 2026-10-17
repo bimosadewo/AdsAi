@@ -85,7 +85,8 @@ def _delta(cur: Any, prev: Any) -> float | None:
 def build_data(rows: list[dict[str, Any]], prev_rows: list[dict[str, Any]], camp_rows: list[dict[str, Any]],
                s: date, e: date, ps: date, pe: date, customer_id: str, client_name: str | None = None,
                alerts: list[dict[str, Any]] | None = None, target_cpa: float | None = None,
-               kw_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+               kw_rows: list[dict[str, Any]] | None = None,
+               ag_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     cur, prev = _totals(rows), _totals(prev_rows)
     kpi = {k: {"nilai": cur[k], "sebelumnya": prev[k], "perubahan_pct": _delta(cur[k], prev[k])}
            for k in ("biaya", "klik", "tayangan", "konversi", "biaya_per_konversi", "ctr", "cpc", "tingkat_konversi")}
@@ -136,6 +137,8 @@ def build_data(rows: list[dict[str, Any]], prev_rows: list[dict[str, Any]], camp
         "kpi": kpi,
         "harian": daily,
         "kampanye": campaigns,
+        "grup_iklan": ad_groups(ag_rows or []),
+        "kata_kunci": top_keywords(kw_rows or []),
         "insight": insights,
         "sorotan": highlight(insights),
         "sumber": "Google Ads API langsung (bukan cache); hari ini tidak disertakan karena belum lengkap.",
@@ -153,6 +156,25 @@ def highlight(insights: list[dict[str, Any]]) -> dict[str, Any] | None:
     urgent = [i for i in insights if i["level"] != "INFO"]
     pool = urgent or [i for i in insights if i.get("aksi")]
     return min(pool, key=lambda i: (LEVELS.get(i["level"], 9), not i.get("aksi"))) if pool else None
+
+
+def ad_groups(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per grup iklan — termasuk biaya AI Max/pencocokan luas yang tidak tercatat di kata kunci mana pun."""
+    out = [{"kampanye": r.get("campaign.name"), "nama": r.get("ad_group.name"), **_totals([r])} for r in rows]
+    return sorted((g for g in out if g["biaya"] or g["tayangan"]), key=lambda g: -g["biaya"])
+
+
+def top_keywords(rows: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    out = []
+    for r in rows:
+        t = _totals([r])
+        if not t["biaya"]:
+            continue
+        qs = r.get("ad_group_criterion.quality_info.quality_score")
+        out.append({"teks": r.get("ad_group_criterion.keyword.text"),
+                    "match": str(r.get("ad_group_criterion.keyword.match_type") or ""), "qs": int(qs) if qs else None,
+                    "lemah": _weak(r), **t})
+    return sorted(out, key=lambda k: -k["biaya"])[:limit]
 
 
 def _n(v: float) -> str:
@@ -274,6 +296,12 @@ def q_keywords(s: date, e: date) -> str:
             f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
 
 
+def q_adgroups(s: date, e: date) -> str:
+    return ("SELECT campaign.name, ad_group.name, metrics.cost_micros, metrics.clicks, metrics.impressions, "
+            "metrics.conversions FROM ad_group "
+            f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
+
+
 def q_share(s: date, e: date) -> str:
     return ("SELECT campaign.id, campaign.status, campaign.ai_max_setting.enable_ai_max, metrics.search_impression_share, "
             "metrics.search_budget_lost_impression_share FROM campaign "
@@ -286,12 +314,15 @@ def fetch(ads: Any, customer_id: str, days: int = 7, start: str | None = None, e
     rows = ads.search(customer_id, q_daily(s, e))
     prev = ads.search(customer_id, q_daily(ps, pe))
     share = ads.search(customer_id, q_share(s, e))
-    try:
-        kws = ads.search(customer_id, q_keywords(s, e))
-    except Exception:  # noqa: BLE001 — temuan kata kunci pelengkap; dashboard tetap tampil tanpanya
-        kws = []
+    extra = {}
+    for key, q in (("kw", q_keywords), ("ag", q_adgroups)):
+        try:
+            extra[key] = ads.search(customer_id, q(s, e))
+        except Exception:  # noqa: BLE001 — rincian pelengkap; dashboard tetap tampil tanpanya
+            extra[key] = []
     return build_data(rows, prev, share, s, e, ps, pe, customer_id,
-                      getattr(client, "name", None), alerts, getattr(client, "target_cpa", None), kws)
+                      getattr(client, "name", None), alerts, getattr(client, "target_cpa", None),
+                      extra["kw"], extra["ag"])
 
 
 def text_summary(d: dict[str, Any]) -> str:
@@ -447,6 +478,14 @@ function render() {
   $("#camps").innerHTML = `<div class="scroll"><table><tr><th>Kampanye</th><th>Biaya</th><th>Klik</th><th>CTR</th><th>Konv.</th><th>Biaya/konv.</th><th>Hilang krn budget</th></tr>` +
     (d.kampanye.length ? d.kampanye.map(c => `<tr><td>${esc(c.nama)}</td><td>${rp(c.biaya)}</td><td>${num(c.klik)}</td><td>${pct(c.ctr)}</td><td>${num(c.konversi,1)}</td><td>${rp(c.biaya_per_konversi)}</td><td>${c.hilang_karena_budget == null ? "–" : num(c.hilang_karena_budget*100,0) + "%"}</td></tr>`).join("")
       : `<tr><td colspan="7">Tidak ada kampanye yang tayang di periode ini.</td></tr>`) + "</table></div>";
+  const ag = d.grup_iklan || [], kws = d.kata_kunci || [];
+  $("#ags").innerHTML = `<div class="scroll"><table><tr><th>Grup iklan</th><th>Biaya</th><th>Klik</th><th>CPC</th><th>Konv.</th></tr>` +
+    (ag.length ? ag.map(g => `<tr><td>${esc(g.nama)}<div class="sub">${esc(g.kampanye)}</div></td><td>${rp(g.biaya)}</td><td>${num(g.klik)}</td><td>${rp(g.cpc)}</td><td>${num(g.konversi,1)}</td></tr>`).join("")
+      : `<tr><td colspan="5">Tidak ada data grup iklan.</td></tr>`) + "</table></div>";
+  $("#kws").innerHTML = `<div class="scroll"><table><tr><th>Kata kunci</th><th>QS</th><th>Biaya</th><th>Klik</th><th>Konv.</th></tr>` +
+    (kws.length ? kws.map(k => `<tr><td>${esc(k.teks)}<div class="sub">${esc(k.match)}${k.lemah.length ? " · lemah: " + esc(k.lemah.join(", ")) : ""}</div></td><td>${k.qs ?? "–"}</td><td>${rp(k.biaya)}</td><td>${num(k.klik)}</td><td>${num(k.konversi,1)}</td></tr>`).join("")
+      : `<tr><td colspan="5">Tidak ada kata kunci berbiaya.</td></tr>`) + "</table></div>" +
+    '<div class="foot">Biaya dari AI Max/pencocokan luas tidak tercatat di kata kunci — lihat per grup iklan.</div>';
   $("#ins").innerHTML = d.insight.map(i => `<div class="ins"><span class="tag ${i.level}">${i.level}</span><div class="b">${i.judul ? `<div class="h">${esc(i.judul)}</div>` : ""}<div>${esc(i.pesan)}</div>${actBtn(i.aksi)}</div></div>`).join("");
   document.querySelectorAll("button.act").forEach(b => b.onclick = () => ask(ACTIONS[+b.dataset.act], b));
   $("#foot").textContent = d.sumber;
@@ -512,7 +551,9 @@ def html() -> str:
 <button data-tab="kampanye">Kampanye</button><button data-tab="insight">Insight<span id="b-insight"></span></button></div>
 <section id="p-ringkasan"><div id="hl"></div><div class="grid" id="kpi"></div><div class="grid" id="kpi2" style="margin-top:10px"></div>
 <div class="panel"><h2>Harian</h2><div id="chart"></div></div></section>
-<section id="p-kampanye" class="hide"><div class="panel"><h2>Per kampanye</h2><div id="camps"></div></div></section>
+<section id="p-kampanye" class="hide"><div class="panel"><h2>Per kampanye</h2><div id="camps"></div></div>
+<div class="panel"><h2>Per grup iklan</h2><div id="ags"></div></div>
+<div class="panel"><h2>Kata kunci teratas (biaya)</h2><div id="kws"></div></div></section>
 <section id="p-insight" class="hide"><div class="panel"><h2>Temuan</h2><div id="ins"></div></div></section>
 <div class="foot" id="foot"></div>
 </div>
