@@ -276,6 +276,18 @@ akun, deteksi broad-only/portofolio sebelum menulis, audit tracking berskor A–
   → **Diterapkan:** AdsAi `research_keywords` sendiri (geo 2360 + bahasa 1025 eksplisit, metrik historis untuk
   setiap seed, tanpa ambang volume, niat dari persentil bid + kata beli/informasi, budget 10/20/40 klik).
 
+- **Review performa 16 Okt (skill `adspirer-performance-review`):** urutannya — audit tracking dulu →
+  scorecard periode setara → mulai dari kesimpulan, 1 masalah + 1 peluang + 1 rekomendasi berangka →
+  tawarkan artifact visual → tawarkan jadwal mingguan. Kartu dashboard dirender host (MCP Apps), bukan
+  isi datanya yang lebih kaya.
+  - `get_campaign_performance` kemarin: Rp79.276, 19 klik, CTR 4,5%, **2 konversi** (Rp39.638/konv.).
+    Rekomendasinya keliru: "ROAS 0.0x … confirmed loss" untuk akun prospek (nilai konversi 0/1).
+  - `audit_conversion_tracking` memberi **A (96,7)** padahal: "Add to basket (Page load)" berstatus Utama
+    dinilai PASS; status tag "Perlu diperhatikan" tidak diperiksa; G-CT-01 menyebut 2 konversi 7 hari
+    sementara G-CT-06 menyebut "current 7d: 0" (tidak konsisten).
+  → Diterapkan: skill `adsai-review` (+artifact, +jadwal, +aturan ROAS akun prospek, +jangan percaya skor
+  audit mentah). Backlog: tool audit tracking AdsAi berskor yang memeriksa aksi ringan Utama & status tag.
+
 Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Search).
 
 ## 6. Log observasi (tambahkan setiap sesi)
