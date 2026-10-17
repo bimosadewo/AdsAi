@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, dashboard, diagnostics, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
+from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -79,7 +79,18 @@ def performance_dashboard(customer_id: str | None = None, client: str | None = N
         raise ToolError(str(ex)) from ex
 
 
-mcp = MCPServer("google-ads", instructions=INSTRUCTIONS, extensions=[apps])
+_remote = remote_auth.from_env()   # None = mode lokal (stdio, Claude Desktop)
+mcp = MCPServer("google-ads", instructions=INSTRUCTIONS, extensions=[apps],
+                **({"auth_server_provider": _remote[0], "auth": _remote[1]} if _remote else {}))
+if _remote:
+    @mcp.custom_route(remote_auth.CALLBACK_PATH, methods=["GET"], include_in_schema=False)
+    async def _google_callback(request):
+        return await _remote[0].handle_callback(request)
+
+    @mcp.custom_route("/healthz", methods=["GET"], include_in_schema=False)
+    async def _healthz(request):
+        from starlette.responses import PlainTextResponse
+        return PlainTextResponse("ok")
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=True)
 WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=True)
 
@@ -1024,6 +1035,23 @@ def add_strategy_directive(client: str, kind: str, text: str, reason: str, secti
 
 def main() -> None:
     mcp.run()
+
+
+def main_http() -> None:
+    """Mode online (Cloud Run): Streamable HTTP di 0.0.0.0:$PORT, wajib login (lihat remote_auth)."""
+    import os
+
+    import uvicorn
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    if not _remote:
+        raise SystemExit("ADSAI_PUBLIC_URL belum diisi — mode online butuh login. Lihat docs/SERVER-ONLINE.md.")
+    app = mcp.streamable_http_app(
+        host="0.0.0.0",
+        # Proteksi DNS-rebinding untuk server lokal; di server publik setiap permintaan sudah wajib token.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")), proxy_headers=True,
+                forwarded_allow_ips="*")
 
 
 if __name__ == "__main__":

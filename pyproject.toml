@@ -18,6 +18,7 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 google-ads-mcp = "gads_mcp.server:main"
+adsai-server = "gads_mcp.server:main_http"
 adsai = "gads_mcp.cli:main"
 
 [build-system]

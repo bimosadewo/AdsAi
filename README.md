@@ -150,6 +150,11 @@ Kode keluar: `0` aman · `2` ada alert KRITIS · `1` error. Jadwal yang disarank
 3. Salin `clients.example.yaml` → `clients.yaml`, isi data klien, lalu `adsai clients`.
 4. Atur pengaman & WhatsApp di `.env` (lihat `.env.example`). Default WA = `console` (tidak mengirim apa pun).
 
+## AdsAi online (claude.ai, HP, tim)
+
+AdsAi bisa dijalankan sebagai server online di Cloud Run dengan login Google dan deploy otomatis dari GitHub —
+lihat [docs/SERVER-ONLINE.md](docs/SERVER-ONLINE.md). Mode lokal di bawah tetap berfungsi.
+
 ## Pasang di Claude Desktop
 
 **Claude Desktop → Settings → Developer → Edit Config**:
