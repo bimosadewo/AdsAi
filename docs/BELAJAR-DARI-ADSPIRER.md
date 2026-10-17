@@ -333,3 +333,18 @@ Dari kartu Adspirer ("Low-quality keyword is draining budget · QS 3 · Fix or p
 - **Diadopsi:** rincian **per grup iklan** dan **kata kunci teratas** di tab Kampanye. Grup iklan menampilkan
   biaya AI Max yang tidak tercatat di kata kunci (Kebutuhan Proyek Rp60.496/19 klik, kata kuncinya hampir
   tidak tayang; Ukuran dan Ketebalan CPC ±Rp7.658, 0 konversi).
+
+## Putaran 11 — Agents Adspirer vs AdsAi (17 Okt 2026)
+
+Adspirer `monitoring_and_reporting` (16 tool): Watch Agent (`run_watch_now`, tiap 15 menit + email), monitor
+(`create_monitor`/`test_monitor`/riwayat), brief terjadwal, antrean persetujuan (`list_pending_actions`,
+`manage_action`, `apply_signal_actions`), riset async. Celah AdsAi saat itu: semua yang **berjalan sendiri**.
+
+Diterapkan:
+- `create_monitor` **multi-syarat** (logika DAN, maks 5) per kampanye / total akun, dengan `consecutive_days`
+  yang dihitung sungguhan; pratinjau menampilkan hasil uji coba pada data nyata sebelum disimpan.
+- `test_monitor` memakai logika yang sama dengan alarm sungguhan (Adspirer mengabaikan berturut-turut).
+- `watch_scan` = Watch Agent: alarm + temuan dashboard + kesehatan akun, diurutkan, tiap temuan dengan aksi.
+- CPA dengan 0 konversi dihitung tak terhingga bila ada biaya (kasus terburuk), bukan dilewati.
+
+Berikutnya: jadwal pagi (tugas terjadwal Claude yang memanggil `watch_scan`) dan antrean persetujuan.

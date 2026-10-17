@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, rsa, strategy,
+from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, monitors, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -1044,6 +1044,114 @@ def add_strategy_directive(client: str, kind: str, text: str, reason: str, secti
     path.write_text(strategy.add_directive(current, d, topic or d.teks[:40], today_local()), encoding="utf-8")
     return {"status": "DISIMPAN", "klien": cl.name, "berkas": str(path), "arahan": d.line()[2:],
             "terverifikasi": [x.to_dict() for x in strategy.load(cl.key)["arahan"]]}
+
+
+# ---------------------------------------------------------------------------
+# Monitor & pemindaian akun (pengganti Watch Agent / monitor Adspirer)
+# ---------------------------------------------------------------------------
+
+LOCAL_WRITE = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
+
+
+def _monitor_target(client: str | None, customer_id: str | None) -> str:
+    a = ads()
+    if client:
+        return find_client(load_clients(a.settings.clients_file), client).customer_id
+    return a.customer_id(customer_id)
+
+
+@functools.partial(_register, annotations=LOCAL_WRITE)
+def create_monitor(name: str, conditions: list[str], consecutive_days: int = 1, campaign: str | None = None,
+                   client: str | None = None, customer_id: str | None = None, confirm: bool = False) -> dict:
+    """Buat alarm multi-syarat. conditions: daftar syarat yang SEMUA harus terpenuhi pada hari yang sama, mis.
+    ["cpa > 150000", "biaya > 100000"] atau ["konversi = 0", "biaya >= 50000"]. Metrik: biaya, klik, tayangan,
+    konversi, cpa, ctr, cpc, tingkat_konversi (uang dalam Rupiah, CTR dalam %). consecutive_days: alarm berbunyi
+    bila syarat terpenuhi N hari berturut-turut sampai kemarin. campaign: nama/ID kampanye (sebagian nama boleh),
+    "AKUN" untuk total akun, kosong = tiap kampanye aktif dinilai sendiri.
+    confirm=false: tampilkan aturan + hasil uji coba pada data sungguhan, belum disimpan. confirm=true: simpan.
+    Tidak mengubah akun Google Ads."""
+    if not 1 <= int(consecutive_days) <= monitors.MAX_LOOKBACK - 1:
+        raise ValueError(f"consecutive_days harus 1–{monitors.MAX_LOOKBACK - 1}.")
+    m = monitors.Monitor(nama=name.strip()[:80], kondisi=monitors.parse_conditions(conditions),
+                         customer_id=_monitor_target(client, customer_id), berturut_hari=int(consecutive_days),
+                         kampanye=(campaign or None))
+    trial = monitors.run(ads(), [m], today_local())[0]
+    if not confirm:
+        return {"status": "PRATINJAU", "monitor": m.to_dict(), "uji_coba_sekarang": trial,
+                "pesan": "Belum disimpan. Tunjukkan aturan & hasil uji coba ke pengguna, lalu confirm=true."}
+    all_m = monitors.load()
+    all_m.append(m)
+    monitors.save(all_m)
+    return {"status": "DISIMPAN", "monitor": m.to_dict(), "uji_coba_sekarang": trial,
+            "terverifikasi": [x.to_dict() for x in monitors.load() if x.id == m.id]}
+
+
+@tool
+def list_monitors() -> dict:
+    """Daftar alarm yang tersimpan beserta aturannya."""
+    return {"berkas": str(monitors.store_path()), "monitor": [m.to_dict() for m in monitors.load()]}
+
+
+@functools.partial(_register, annotations=LOCAL_WRITE)
+def delete_monitor(monitor_id: str, confirm: bool = False) -> dict:
+    """Hapus alarm berdasarkan id (lihat list_monitors). confirm=false: pratinjau. Tidak mengubah akun Google Ads."""
+    all_m = monitors.load()
+    hit = [m for m in all_m if m.id == monitor_id]
+    if not hit:
+        raise ValueError(f"Monitor {monitor_id} tidak ditemukan. Lihat list_monitors.")
+    if not confirm:
+        return {"status": "PRATINJAU", "akan_dihapus": hit[0].to_dict()}
+    monitors.save([m for m in all_m if m.id != monitor_id])
+    return {"status": "DIHAPUS", "monitor": hit[0].to_dict(), "sisa": len(monitors.load())}
+
+
+@tool
+def test_monitor(monitor_id: str) -> dict:
+    """Uji satu alarm tersimpan pada data sungguhan sampai kemarin — memakai logika yang SAMA dengan alarm
+    sungguhan, termasuk hitungan hari berturut-turut. Tidak mengirim notifikasi."""
+    hit = [m for m in monitors.load() if m.id == monitor_id]
+    if not hit:
+        raise ValueError(f"Monitor {monitor_id} tidak ditemukan. Lihat list_monitors.")
+    return monitors.run(ads(), hit, today_local())[0]
+
+
+@tool
+def watch_scan(customer_id: str | None = None, days: int = 7) -> dict:
+    """Pindai akun sekarang (setara Watch Agent): semua alarm tersimpan + temuan dashboard (kata kunci QS rendah,
+    landing page, biaya AI Max di luar kata kunci, CPA, budget) + cek kesehatan akun. Hasil diurutkan dari yang
+    paling mendesak, masing-masing dengan 'aksi' berupa pertanyaan siap pakai. Tidak mengubah apa pun.
+    Cocok dijadwalkan tiap pagi; laporkan ringkas: yang terpicu dulu, lalu 1–3 langkah berikutnya."""
+    a = ads()
+    cid = a.customer_id(customer_id)
+    today = today_local()
+    alarm = monitors.run(a, [m for m in monitors.load() if m.customer_id == cid], today)
+    d = dashboard.fetch(a, cid, days)
+    try:
+        health = account_alerts(cid)["peringatan"]
+    except ToolError as ex:
+        health = [f"Cek kesehatan akun gagal: {ex}"]
+    items = []
+    for r in alarm:
+        if r["terpicu"]:
+            ent = ", ".join(f"{p['entitas']} ({p['hari_berturut']} hari)" for p in r["pemicu"][:3])
+            items.append({"level": "KRITIS", "sumber": "alarm", "judul": f"Alarm: {r['nama']}",
+                          "pesan": f"{r['aturan']} → {ent}",
+                          "aksi": f"Alarm '{r['nama']}' terpicu untuk {ent}. Cari penyebabnya dan usulkan langkah, "
+                                  "pratinjau dulu sebelum mengubah apa pun."})
+    for i in d["insight"]:
+        if i["level"] != "INFO" or i.get("aksi"):
+            items.append({"level": i["level"], "sumber": "dashboard", "judul": i.get("judul") or i["pesan"][:60],
+                          "pesan": i["pesan"], "aksi": (i.get("aksi") or {}).get("prompt")})
+    for text in health:
+        items.append({"level": "PERINGATAN", "sumber": "kesehatan akun", "judul": text[:60], "pesan": text,
+                      "aksi": None})
+    items.sort(key=lambda x: dashboard.LEVELS.get(x["level"], 9))
+    k = d["kpi"]
+    return {"customer_id": cid, "dipindai": today.isoformat(), "periode": d["periode"],
+            "ringkas": f"{days} hari: biaya {k['biaya']['nilai']:,.0f}, klik {k['klik']['nilai']:,.0f}, "
+                       f"konversi {k['konversi']['nilai']:,.1f}".replace(",", "."),
+            "jumlah_temuan": len(items), "alarm_dinilai": len(alarm),
+            "alarm_terpicu": sum(r["terpicu"] for r in alarm), "temuan": items}
 
 
 def main() -> None:
