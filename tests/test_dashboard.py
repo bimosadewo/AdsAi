@@ -79,3 +79,54 @@ def test_server_registers_app_tool(tmp_path, monkeypatch):
     out = server.performance_dashboard(customer_id=CID, start="2026-10-16", end="2026-10-16")
     assert out["kpi"]["konversi"]["nilai"] == 2 and out["kpi"]["biaya_per_konversi"]["nilai"] == 39638
     json.dumps(out)
+
+
+def kw(text, match, qs, cost, clicks, conv, ctr="AVERAGE", rel="ABOVE_AVERAGE", lp="BELOW_AVERAGE", cid="1", name="Plastik Cor"):
+    p = "ad_group_criterion.quality_info."
+    return {"campaign.id": cid, "campaign.name": name, "ad_group_criterion.keyword.text": text,
+            "ad_group_criterion.keyword.match_type": match, p + "quality_score": qs, p + "search_predicted_ctr": ctr,
+            p + "creative_quality_score": rel, p + "post_click_quality_score": lp, "metrics.cost": cost,
+            "metrics.clicks": clicks, "metrics.conversions": conv}
+
+
+def test_keyword_insights_low_qs_landing_page_and_ai_max():
+    kws = [kw("harga plastik cor", "PHRASE", 5, 64253, 10, 1),
+           kw("plastik cor", "EXACT", 3, 37219, 7, 0, ctr="BELOW_AVERAGE"),
+           kw("harga plastik cor per roll", "EXACT", 7, 5392, 2, 0, ctr="ABOVE_AVERAGE")]
+    camps = [{"id": "1", "nama": "Plastik Cor", "biaya": 250525.0, "klik": 52.0, "konversi": 1.0, "ai_max": True}]
+    out = db.keyword_insights(kws, camps)
+    low, lp, ai = out
+    assert low["lencana"] == "QS 3" and '"plastik cor" (EXACT)' in low["pesan"]
+    assert "perkiraan CTR, landing page" in low["pesan"] and "plastik cor" in low["aksi"]["prompt"]
+    assert "3 dari 3" in lp["pesan"]
+    assert "0 konversi." in low["pesan"]
+    assert "57% biaya" in ai["pesan"] and "AI Max aktif" in ai["pesan"] and "33 klik" in ai["pesan"]
+    assert ai["level"] == "PERINGATAN"  # 0 konversi di luar kata kunci
+    assert db.highlight(db.keyword_insights(kws, camps) + [{"level": "INFO", "pesan": "x"}]) == low
+
+
+def test_keyword_insights_quiet_when_healthy():
+    kws = [kw("plastik cor", "EXACT", 8, 50000, 10, 1, lp="AVERAGE")]
+    camps = [{"id": "1", "nama": "Plastik Cor", "biaya": 52000.0, "klik": 10.0, "konversi": 1.0, "ai_max": False}]
+    assert db.keyword_insights(kws, camps) == []
+    assert db.highlight([{"level": "INFO", "pesan": "x"}]) is None
+
+
+def test_html_has_highlight_actions_and_60_days():
+    h = db.html()
+    assert 'data-days="60"' in h and 'id="hl"' in h and "sendMessage" in h and 'id="b-insight"' in h
+
+
+def test_app_script_parses_with_bundle(tmp_path):
+    """Skrip kartu + SDK harus lolos parse sebagai satu module (nama ganda = SyntaxError di browser)."""
+    import re as _re
+    import shutil
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node tidak tersedia")
+    src = _re.search(r'<script type="module">(.*)</script>', db.html(), _re.S).group(1)
+    f = tmp_path / "card.mjs"
+    f.write_text(src, encoding="utf-8")
+    r = subprocess.run([node, "--check", str(f)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

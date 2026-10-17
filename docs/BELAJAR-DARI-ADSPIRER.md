@@ -307,3 +307,18 @@ Monitor uji yang dibuat: "Tiga Pilar - Konversi 0 selama 3 hari" (2 kampanye Sea
 | 2026-10-14 | Dokumentasi publik adspirer.com (via pencarian web) | Lihat §5 putaran 6 |
 | 2026-10-14 | Seluruh dokumentasi publik (panduan, KB, 178 referensi API, changelog) dibaca langsung | Lihat §5 putaran 7 |
 | 2026-10-15 | Paket Plus: dashboard, Watch Agent (gagal: unreachable), create_monitor + test_monitor | Lihat §5 putaran 8 |
+
+## Putaran 9 — Kartu dashboard: sorotan + tombol aksi (17 Okt 2026)
+
+Dari kartu Adspirer ("Low-quality keyword is draining budget · QS 3 · Fix or pause it"):
+- **Diadopsi:** satu temuan prioritas di atas kartu dengan tombol aksi; lencana jumlah temuan di tab;
+  ikon di kotak KPI; rentang 60 hari.
+- **Dibuat lebih baik:** AdsAi menyebut *komponen* Quality Score yang lemah (perkiraan CTR / relevansi iklan /
+  landing page) karena perbaikannya berbeda; mendeteksi landing page yang menurunkan QS banyak kata kunci
+  sekaligus; dan menghitung biaya yang **tidak lewat kata kunci** (AI Max / pencocokan luas) — di akun
+  PT Tiga Pilar 57% biaya kampanye Plastik Cor. Adspirer menyarankan "fix or pause" untuk kata kunci yang
+  baru 7 klik; AdsAi tidak menyarankan jeda sedini itu.
+- **Tombol aksi** mengirim pertanyaan ke Claude (`ui/message`), bukan langsung mengubah akun — perubahan
+  tetap lewat pratinjau → persetujuan.
+- **Pelajaran teknis:** skrip kartu berbagi scope dengan SDK yang di-minify; nama `P` bentrok →
+  SyntaxError dan kartu kosong. Kini ada tes `node --check` atas skrip gabungan.

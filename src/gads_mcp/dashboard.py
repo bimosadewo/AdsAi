@@ -23,7 +23,7 @@ from .collect import today_local
 from .fmt import number, rupiah
 
 RESOURCE_URI = "ui://adsai/dashboard.html"
-RANGES = (7, 14, 30, 90)
+RANGES = (7, 14, 30, 60, 90)
 _UI_DIR = Path(__file__).parent / "ui"
 _BUNDLE = "ext-apps-2.0.3.js"
 
@@ -84,7 +84,8 @@ def _delta(cur: Any, prev: Any) -> float | None:
 
 def build_data(rows: list[dict[str, Any]], prev_rows: list[dict[str, Any]], camp_rows: list[dict[str, Any]],
                s: date, e: date, ps: date, pe: date, customer_id: str, client_name: str | None = None,
-               alerts: list[dict[str, Any]] | None = None, target_cpa: float | None = None) -> dict[str, Any]:
+               alerts: list[dict[str, Any]] | None = None, target_cpa: float | None = None,
+               kw_rows: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     cur, prev = _totals(rows), _totals(prev_rows)
     kpi = {k: {"nilai": cur[k], "sebelumnya": prev[k], "perubahan_pct": _delta(cur[k], prev[k])}
            for k in ("biaya", "klik", "tayangan", "konversi", "biaya_per_konversi", "ctr", "cpc", "tingkat_konversi")}
@@ -115,12 +116,15 @@ def build_data(rows: list[dict[str, Any]], prev_rows: list[dict[str, Any]], camp
         lost = sh.get("metrics.search_budget_lost_impression_share")
         campaigns.append({"id": cid, "nama": names[cid], "status": sh.get("campaign.status"), **t,
                           "pangsa_tayang": sh.get("metrics.search_impression_share"),
-                          "hilang_karena_budget": lost})
+                          "hilang_karena_budget": lost,
+                          "ai_max": bool(sh.get("campaign.ai_max_setting.enable_ai_max"))})
     campaigns.sort(key=lambda c: -c["biaya"])
 
     insights = list(_insights(cur, prev, campaigns, target_cpa))
+    insights += keyword_insights(kw_rows or [], campaigns)
     for a in alerts or []:
         insights.append({"level": a.get("level", "INFO"), "pesan": a.get("pesan", "")})
+    insights.sort(key=lambda i: LEVELS.get(i["level"], 9))
 
     n = (e - s).days + 1
     return {
@@ -133,8 +137,99 @@ def build_data(rows: list[dict[str, Any]], prev_rows: list[dict[str, Any]], camp
         "harian": daily,
         "kampanye": campaigns,
         "insight": insights,
+        "sorotan": highlight(insights),
         "sumber": "Google Ads API langsung (bukan cache); hari ini tidak disertakan karena belum lengkap.",
     }
+
+
+LEVELS = {"KRITIS": 0, "PERINGATAN": 1, "INFO": 2}
+QS_PARTS = {"ad_group_criterion.quality_info.search_predicted_ctr": "perkiraan CTR",
+            "ad_group_criterion.quality_info.creative_quality_score": "relevansi iklan",
+            "ad_group_criterion.quality_info.post_click_quality_score": "landing page"}
+
+
+def highlight(insights: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Satu temuan untuk disorot di atas kartu: yang paling mendesak, utamakan yang punya aksi."""
+    urgent = [i for i in insights if i["level"] != "INFO"]
+    pool = urgent or [i for i in insights if i.get("aksi")]
+    return min(pool, key=lambda i: (LEVELS.get(i["level"], 9), not i.get("aksi"))) if pool else None
+
+
+def _n(v: float) -> str:
+    return number(v, 0 if float(v).is_integer() else 1)
+
+
+def _weak(r: dict[str, Any]) -> list[str]:
+    return [label for key, label in QS_PARTS.items() if str(r.get(key) or "").endswith("BELOW_AVERAGE")]
+
+
+def keyword_insights(kw_rows: list[dict[str, Any]], campaigns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Murni: Quality Score per kata kunci + biaya yang tidak lewat kata kunci (AI Max / pencocokan luas).
+
+    Beda dengan sekadar "QS rendah": AdsAi menyebut KOMPONEN yang lemah, karena perbaikannya berbeda —
+    landing page (halaman), relevansi iklan (teks iklan), perkiraan CTR (judul/penawaran)."""
+    out: list[dict[str, Any]] = []
+    kws = []
+    for r in kw_rows:
+        qs = r.get("ad_group_criterion.quality_info.quality_score")
+        kws.append({"teks": r.get("ad_group_criterion.keyword.text"),
+                    "match": str(r.get("ad_group_criterion.keyword.match_type") or ""),
+                    "kampanye_id": str(r.get("campaign.id")), "kampanye": r.get("campaign.name"),
+                    "qs": int(qs) if qs else None, "lemah": _weak(r),
+                    "biaya": _f(r, "metrics.cost"), "klik": _f(r, "metrics.clicks"),
+                    "konversi": _f(r, "metrics.conversions")})
+
+    low = sorted((k for k in kws if k["qs"] and k["qs"] <= 4 and k["biaya"] > 0), key=lambda k: -k["biaya"])
+    if low:
+        k = low[0]
+        why = f" Lemah di: {', '.join(k['lemah'])}." if k["lemah"] else ""
+        more = f" (+{len(low) - 1} kata kunci QS rendah lain)" if len(low) > 1 else ""
+        out.append({"level": "PERINGATAN", "judul": "Kata kunci berkualitas rendah memakan budget",
+                    "pesan": f"\"{k['teks']}\" ({k['match']}): Quality Score {k['qs']}/10, biaya {rupiah(k['biaya'])}, "
+                             f"{_n(k['konversi'])} konversi.{why}{more}",
+                    "lencana": f"QS {k['qs']}",
+                    "aksi": {"label": "Analisis & perbaiki",
+                             "prompt": f"Analisis kata kunci \"{k['teks']}\" ({k['match']}) di kampanye {k['kampanye']}: "
+                                       f"Quality Score {k['qs']}{', lemah di ' + ', '.join(k['lemah']) if k['lemah'] else ''}. "
+                                       "Jelaskan penyebabnya dan usulkan perbaikan (teks iklan, landing page) atau jeda. "
+                                       "Jangan ubah apa pun tanpa pratinjau dan persetujuan saya."}})
+
+    spent = [k for k in kws if k["biaya"] > 0]
+    lp_bad = [k for k in spent if "landing page" in k["lemah"]]
+    kw_cost = sum(k["biaya"] for k in spent)
+    if len(lp_bad) >= 2 and sum(k["biaya"] for k in lp_bad) >= 0.5 * kw_cost:
+        share = sum(k["biaya"] for k in lp_bad) / kw_cost * 100
+        out.append({"level": "PERINGATAN", "judul": "Landing page menurunkan Quality Score",
+                    "pesan": f"Google menilai landing page di bawah rata-rata untuk {len(lp_bad)} dari {len(spent)} kata "
+                             f"kunci yang berbiaya ({number(share, 0)}% biaya kata kunci). Satu perbaikan halaman "
+                             "menaikkan QS semuanya sekaligus.",
+                    "aksi": {"label": "Checklist landing page",
+                             "prompt": "Buat checklist perbaikan landing page untuk kata kunci yang landing page-nya dinilai "
+                                       "di bawah rata-rata (cek URL tujuan iklannya): kecepatan di HP, kecocokan judul dengan "
+                                       "kata kunci, harga/penawaran, dan tombol WA di atas."}})
+
+    by_camp: dict[str, dict[str, float]] = {}
+    for k in kws:
+        t = by_camp.setdefault(k["kampanye_id"], {"biaya": 0.0, "klik": 0.0, "konversi": 0.0})
+        for f in ("biaya", "klik", "konversi"):
+            t[f] += k[f]
+    total = sum(c["biaya"] for c in campaigns) or 1
+    for c in campaigns:
+        if c["id"] not in by_camp:  # kampanye tanpa data kata kunci (mis. PMax) — bukan temuan
+            continue
+        rest = c["biaya"] - by_camp[c["id"]]["biaya"]
+        if c["biaya"] and rest / c["biaya"] >= 0.3 and rest >= 0.1 * total:
+            conv = max(c["konversi"] - by_camp[c["id"]]["konversi"], 0)
+            src = "AI Max aktif" if c.get("ai_max") else "pencocokan luas/otomatis"
+            out.append({"level": "PERINGATAN" if not conv else "INFO",
+                        "judul": "Sebagian besar biaya di luar daftar kata kunci",
+                        "pesan": f"{c['nama']}: {number(rest / c['biaya'] * 100, 0)}% biaya ({rupiah(rest)}, "
+                                 f"{_n(c['klik'] - by_camp[c['id']]['klik'])} klik, {_n(conv)} konversi) dari "
+                                 f"pencarian yang tidak cocok dengan kata kunci Anda ({src}).",
+                        "aksi": {"label": "Cek search terms",
+                                 "prompt": f"Tampilkan search terms kampanye {c['nama']} periode ini yang bukan dari daftar "
+                                           "kata kunci, tandai yang tidak relevan, dan siapkan pratinjau negative keyword."}})
+    return out
 
 
 def _insights(cur: dict, prev: dict, campaigns: list[dict], target_cpa: float | None) -> Iterable[dict[str, str]]:
@@ -170,8 +265,17 @@ def q_daily(s: date, e: date) -> str:
             f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
 
 
+def q_keywords(s: date, e: date) -> str:
+    return ("SELECT campaign.id, campaign.name, ad_group_criterion.keyword.text, ad_group_criterion.keyword.match_type, "
+            "ad_group_criterion.quality_info.quality_score, ad_group_criterion.quality_info.search_predicted_ctr, "
+            "ad_group_criterion.quality_info.creative_quality_score, "
+            "ad_group_criterion.quality_info.post_click_quality_score, metrics.cost_micros, metrics.clicks, "
+            "metrics.conversions FROM keyword_view "
+            f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
+
+
 def q_share(s: date, e: date) -> str:
-    return ("SELECT campaign.id, campaign.status, metrics.search_impression_share, "
+    return ("SELECT campaign.id, campaign.status, campaign.ai_max_setting.enable_ai_max, metrics.search_impression_share, "
             "metrics.search_budget_lost_impression_share FROM campaign "
             f"WHERE segments.date BETWEEN '{s.isoformat()}' AND '{e.isoformat()}' AND metrics.impressions > 0")
 
@@ -182,8 +286,12 @@ def fetch(ads: Any, customer_id: str, days: int = 7, start: str | None = None, e
     rows = ads.search(customer_id, q_daily(s, e))
     prev = ads.search(customer_id, q_daily(ps, pe))
     share = ads.search(customer_id, q_share(s, e))
+    try:
+        kws = ads.search(customer_id, q_keywords(s, e))
+    except Exception:  # noqa: BLE001 — temuan kata kunci pelengkap; dashboard tetap tampil tanpanya
+        kws = []
     return build_data(rows, prev, share, s, e, ps, pe, customer_id,
-                      getattr(client, "name", None), alerts, getattr(client, "target_cpa", None))
+                      getattr(client, "name", None), alerts, getattr(client, "target_cpa", None), kws)
 
 
 def text_summary(d: dict[str, Any]) -> str:
@@ -198,7 +306,7 @@ def text_summary(d: dict[str, Any]) -> str:
              f"biaya {rupiah(k['biaya']['nilai'])}{ch('biaya')}, klik {number(k['klik']['nilai'])}{ch('klik')}, "
              f"konversi {number(k['konversi']['nilai'], 1)}{ch('konversi')}, biaya/konversi "
              f"{rupiah(k['biaya_per_konversi']['nilai'])}{ch('biaya_per_konversi')}."]
-    lines += [f"[{i['level']}] {i['pesan']}" for i in d["insight"][:5]]
+    lines += [f"[{i['level']}] {i['pesan']}" for i in d["insight"][:6]]
     return "\n".join(lines)
 
 
@@ -246,6 +354,18 @@ th{color:var(--mute);font-weight:600;font-size:12px}.scroll{overflow-x:auto}
 .foot{color:var(--mute);font-size:11.5px;margin-top:10px}.hide{display:none}.load{opacity:.5}
 .legend{display:flex;gap:14px;color:var(--mute);font-size:12px;margin-top:6px}
 .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.hl{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;
+padding:12px 14px;margin-bottom:12px}.hl.KRITIS{border-left-color:var(--crit)}.hl.INFO{border-left-color:var(--accent)}
+.hl .t{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;font-weight:700;color:var(--ink)}
+.hl .m{color:var(--mute);margin-top:4px;font-size:13px}.pill{font-size:11.5px;font-weight:700;padding:2px 8px;
+border-radius:999px;background:var(--line);color:var(--ink);white-space:nowrap}
+.act{margin-top:10px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:8px;
+padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}.act:disabled{opacity:.5;cursor:default}
+.badge{display:inline-block;min-width:18px;padding:0 5px;margin-left:6px;border-radius:999px;background:var(--crit);
+color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.k .l{display:flex;align-items:center;gap:7px}.ic{display:inline-grid;place-items:center;width:24px;height:24px;
+border-radius:7px;flex:none}.ic svg{width:15px;height:15px}
+.ins .b{flex:1}.ins .h{font-weight:600}
 """
 
 _APP_JS = r"""
@@ -259,12 +379,28 @@ const pct = (v) => v == null ? "–" : num(v, 2) + "%";
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let DATA = null, TAB = "ringkasan";
 
+const ICONS = {
+  uang: '<path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  klik: '<path d="M9 9l11 4-5 2-2 5z"/><path d="M5 3v3M3 5h3M8 4l1 2M4 8l2 1"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
+  mata: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  cek: '<path d="M5 13l4 4L19 7"/>',
+  koin: '<circle cx="12" cy="12" r="9"/><path d="M9 12h6M12 9v6"/>',
+  naik: '<path d="M4 17l6-6 4 4 6-8"/><path d="M14 7h6v6"/>',
+};
+const icon = (k, c) => `<span class="ic" style="background:color-mix(in srgb, ${c} 14%, transparent);color:${c}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg></span>`;
+
 const KPI = [
-  ["biaya", "Biaya", rpShort, "lower"], ["klik", "Klik", (v)=>num(v), "higher"],
-  ["konversi", "Konversi", (v)=>num(v,1), "higher"], ["biaya_per_konversi", "Biaya/konversi", rpShort, "lower"],
-  ["tayangan", "Tayangan", (v)=>num(v), "higher"], ["ctr", "CTR", pct, "higher"], ["cpc", "CPC", rpShort, "lower"],
-  ["tingkat_konversi", "Tingkat konversi", pct, "higher"],
+  ["biaya", "Biaya", rpShort, "lower", "uang", "#2f6fed"], ["klik", "Klik", (v)=>num(v), "higher", "klik", "#ea7a2b"],
+  ["konversi", "Konversi", (v)=>num(v,1), "higher", "target", "#1f8a4c"],
+  ["biaya_per_konversi", "Biaya/konversi", rpShort, "lower", "tag", "#9b51e0"],
+  ["tayangan", "Tayangan", (v)=>num(v), "higher", "mata", "#7c5cff"], ["ctr", "CTR", pct, "higher", "cek", "#1f8a4c"],
+  ["cpc", "CPC", rpShort, "lower", "koin", "#c08a00"], ["tingkat_konversi", "Tingkat konversi", pct, "higher", "naik", "#0e9f9a"],
 ];
+const tile = ([k, label, f, better, ic, col]) => `<div class="k"><div class="l">${icon(ic, col)}${label}</div><div class="v">${f(DATA.kpi[k].nilai)}</div>${deltaHtml(DATA.kpi[k].perubahan_pct, better)}</div>`;
+const ACTIONS = [];
+const actBtn = (a) => { if (!a) return ""; ACTIONS.push(a.prompt); return `<button class="act" data-act="${ACTIONS.length - 1}">${esc(a.label)}</button>`; };
 
 function deltaHtml(ch, better) {
   if (ch == null) return '<div class="d flat">— vs periode lalu</div>';
@@ -299,15 +435,20 @@ function render() {
   $("#sub").textContent = `${p.mulai} s.d. ${p.selesai} (${p.hari} hari) · dibanding ${p.pembanding.mulai} s.d. ${p.pembanding.selesai}`;
   document.querySelectorAll("#ranges button").forEach(b => b.classList.toggle("on", +b.dataset.days === p.hari));
   document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === TAB));
-  $("#kpi").innerHTML = KPI.slice(0, 4).map(([k, label, f, better]) =>
-    `<div class="k"><div class="l">${label}</div><div class="v">${f(d.kpi[k].nilai)}</div>${deltaHtml(d.kpi[k].perubahan_pct, better)}</div>`).join("");
-  $("#kpi2").innerHTML = KPI.slice(4).map(([k, label, f, better]) =>
-    `<div class="k"><div class="l">${label}</div><div class="v">${f(d.kpi[k].nilai)}</div>${deltaHtml(d.kpi[k].perubahan_pct, better)}</div>`).join("");
+  ACTIONS.length = 0;
+  const h = d.sorotan;
+  $("#hl").innerHTML = h ? `<div class="hl ${h.level}"><div class="t"><span>${esc(h.judul || "Temuan utama")}</span>${h.lencana ? `<span class="pill">${esc(h.lencana)}</span>` : ""}</div><div class="m">${esc(h.pesan)}</div>${actBtn(h.aksi)}</div>` : "";
+  const urgent = d.insight.filter(i => i.level !== "INFO").length;
+  $("#b-insight").innerHTML = urgent ? `<span class="badge">${urgent}</span>` : "";
+  $("#b-ringkasan").innerHTML = h && h.level !== "INFO" ? '<span class="badge">1</span>' : "";
+  $("#kpi").innerHTML = KPI.slice(0, 4).map(tile).join("");
+  $("#kpi2").innerHTML = KPI.slice(4).map(tile).join("");
   $("#chart").innerHTML = chart(d.harian);
   $("#camps").innerHTML = `<div class="scroll"><table><tr><th>Kampanye</th><th>Biaya</th><th>Klik</th><th>CTR</th><th>Konv.</th><th>Biaya/konv.</th><th>Hilang krn budget</th></tr>` +
     (d.kampanye.length ? d.kampanye.map(c => `<tr><td>${esc(c.nama)}</td><td>${rp(c.biaya)}</td><td>${num(c.klik)}</td><td>${pct(c.ctr)}</td><td>${num(c.konversi,1)}</td><td>${rp(c.biaya_per_konversi)}</td><td>${c.hilang_karena_budget == null ? "–" : num(c.hilang_karena_budget*100,0) + "%"}</td></tr>`).join("")
       : `<tr><td colspan="7">Tidak ada kampanye yang tayang di periode ini.</td></tr>`) + "</table></div>";
-  $("#ins").innerHTML = d.insight.map(i => `<div class="ins"><span class="tag ${i.level}">${i.level}</span><div>${esc(i.pesan)}</div></div>`).join("");
+  $("#ins").innerHTML = d.insight.map(i => `<div class="ins"><span class="tag ${i.level}">${i.level}</span><div class="b">${i.judul ? `<div class="h">${esc(i.judul)}</div>` : ""}<div>${esc(i.pesan)}</div>${actBtn(i.aksi)}</div></div>`).join("");
+  document.querySelectorAll("button.act").forEach(b => b.onclick = () => ask(ACTIONS[+b.dataset.act], b));
   $("#foot").textContent = d.sumber;
   ["ringkasan", "kampanye", "insight"].forEach(t => $("#p-" + t).classList.toggle("hide", t !== TAB));
 }
@@ -330,6 +471,17 @@ function applyTheme(ctx) {
 app.ontoolresult = (params) => { const j = readResult(params); if (j) { DATA = j; render(); } };
 app.onhostcontextchanged = (ctx) => applyTheme(ctx);
 
+async function ask(prompt, btn) {
+  btn.disabled = true;
+  try {
+    await app.sendMessage({ role: "user", content: [{ type: "text", text: prompt }] });
+    btn.textContent = "Terkirim ke Claude ✓";
+  } catch (e) {
+    try { await navigator.clipboard.writeText(prompt); btn.textContent = "Disalin — tempel ke chat"; }
+    catch (e2) { btn.textContent = "Ketik ke Claude: " + prompt.slice(0, 60) + "…"; }
+  }
+}
+
 document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => { TAB = b.dataset.tab; render(); });
 document.querySelectorAll("#ranges button").forEach(b => b.onclick = async () => {
   if (!DATA) return;
@@ -349,16 +501,16 @@ applyTheme(app.getHostContext && app.getHostContext());
 
 @lru_cache(maxsize=1)
 def html() -> str:
-    ranges = "".join(f'<button data-days="{n}">{n} hari</button>' for n in RANGES)
+    ranges = "".join(f'<button data-days="{n}" title="{n} hari">{n} hr</button>' for n in RANGES)
     return f"""<!doctype html>
 <html lang="id"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AdsAi — Dashboard</title><style>{_CSS}</style></head>
 <body><div class="wrap">
 <h1 id="title">Performa Google Ads</h1><div class="sub" id="sub">Memuat data…</div>
 <div class="seg" id="ranges">{ranges}</div>
-<div class="seg" id="tabs"><button data-tab="ringkasan" class="on">Ringkasan</button>
-<button data-tab="kampanye">Kampanye</button><button data-tab="insight">Insight</button></div>
-<section id="p-ringkasan"><div class="grid" id="kpi"></div><div class="grid" id="kpi2" style="margin-top:10px"></div>
+<div class="seg" id="tabs"><button data-tab="ringkasan" class="on">Ringkasan<span id="b-ringkasan"></span></button>
+<button data-tab="kampanye">Kampanye</button><button data-tab="insight">Insight<span id="b-insight"></span></button></div>
+<section id="p-ringkasan"><div id="hl"></div><div class="grid" id="kpi"></div><div class="grid" id="kpi2" style="margin-top:10px"></div>
 <div class="panel"><h2>Harian</h2><div id="chart"></div></div></section>
 <section id="p-kampanye" class="hide"><div class="panel"><h2>Per kampanye</h2><div id="camps"></div></div></section>
 <section id="p-insight" class="hide"><div class="panel"><h2>Temuan</h2><div id="ins"></div></div></section>
