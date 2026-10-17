@@ -149,3 +149,27 @@ def test_replayed_google_state_rejected(base):
     url, _ = base
     st, _, body = call(url + "/auth/google/callback?code=ok&state=palsu")
     assert st == 400 and "kedaluwarsa" in body
+
+
+def test_stale_session_after_restart_still_works(base):
+    """Cloud Run restart/deploy/scale-to-zero menghapus sesi di memori. Klien (claude.ai, aplikasi HP) yang
+    masih membawa mcp-session-id lama harus tetap dilayani — server berjalan stateless."""
+    url, _ = base
+    client, verifier, st, h, _ = login(url)
+    code = urllib.parse.parse_qs(urllib.parse.urlparse(h["location"]).query)["code"][0]
+    st, _, body = call(url + "/token", {"grant_type": "authorization_code", "code": code,
+                                        "redirect_uri": "http://localhost:9999/cb", "client_id": client["client_id"],
+                                        "code_verifier": verifier, "resource": url + "/mcp"}, form=True)
+    tok = json.loads(body)["access_token"]
+    hdr = {"Authorization": f"Bearer {tok}", "Accept": "application/json, text/event-stream",
+           "mcp-session-id": "sesi-dari-instance-sebelum-restart"}
+    st, _, body = call(url + "/mcp", {"jsonrpc": "2.0", "id": 7, "method": "resources/read",
+                                      "params": {"uri": "ui://adsai/dashboard.html"}}, hdr)
+    assert st == 200, (st, body[:300])
+    assert "text/html;profile=mcp-app" in body
+    st, _, body = call(url + "/mcp", {"jsonrpc": "2.0", "id": 8, "method": "tools/list"}, hdr)
+    assert st == 200 and "performance_dashboard" in body, (st, body[:300])
+    st, _, body = call(url + "/mcp", {"jsonrpc": "2.0", "id": 9, "method": "tools/call", "params": {
+        "name": "explain_error", "arguments": {"message": "USER_PERMISSION_DENIED"}}}, hdr)
+    assert st == 200 and "MCC" in body, (st, body[:300])
+    assert '"ui/resourceUri"' in call(url + "/mcp", {"jsonrpc": "2.0", "id": 10, "method": "tools/list"}, hdr)[2]

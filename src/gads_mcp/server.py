@@ -51,12 +51,13 @@ apps.add_html_resource(dashboard.RESOURCE_URI, dashboard.html(), name="AdsAi das
 
 
 @apps.tool(resource_uri=dashboard.RESOURCE_URI, visibility=["model", "app"],
+           meta={"ui/resourceUri": dashboard.RESOURCE_URI},  # kunci lama, untuk host MCP Apps versi awal
            annotations=ToolAnnotations(read_only_hint=True, open_world_hint=True))
 def performance_dashboard(customer_id: str | None = None, client: str | None = None, days: int = 7,
                           start: str | None = None, end: str | None = None) -> dict:
     """Dashboard performa Google Ads yang tampil sebagai KARTU INTERAKTIF di Claude: kotak angka (biaya, klik,
     konversi, biaya/konversi, tayangan, CTR, CPC) dengan perbandingan periode setara, grafik harian biaya vs
-    konversi, tabel per kampanye (termasuk tayangan hilang karena budget), dan temuan. Tab rentang 7/14/30/90 hari
+    konversi, tabel per kampanye/grup iklan/kata kunci, dan temuan dengan tombol aksi. Tab rentang 7/14/30/60/90 hari
     bisa diklik di kartu. Default: 7 hari sampai kemarin (hari ini belum lengkap); start/end (YYYY-MM-DD) untuk
     rentang khusus, mis. kemarin saja: start=end=tanggal kemarin. Data langsung dari Google Ads, bukan cache.
     Pakai tool ini untuk "tampilkan performa iklan"; setelah kartu tampil cukup tulis 2–4 kalimat kesimpulan."""
@@ -1048,6 +1049,10 @@ def main_http() -> None:
         raise SystemExit("ADSAI_PUBLIC_URL belum diisi — mode online butuh login. Lihat docs/SERVER-ONLINE.md.")
     app = mcp.streamable_http_app(
         host="0.0.0.0",
+        # Stateless: Cloud Run me-restart/menidurkan instance (deploy, idle) dan sesi di memori hilang; klien
+        # yang membawa mcp-session-id lama lalu ditolak 404 "Session not found" — kartu gagal dimuat di
+        # claude.ai/HP. AdsAi tidak memakai permintaan server→klien, jadi tiap request bisa berdiri sendiri.
+        stateless_http=True,
         # Proteksi DNS-rebinding untuk server lokal; di server publik setiap permintaan sudah wajib token.
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")), proxy_headers=True,

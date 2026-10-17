@@ -100,6 +100,7 @@ Kembali ke **Containers → Volume mounts → Mount volume** `data` di **`/data`
 | Google: *redirect_uri_mismatch* | URI di langkah 3 harus persis sama, termasuk `https://` dan `/auth/google/callback` |
 | Google menolak domain run.app | Google Auth Platform → Branding → Authorized domains → tambahkan `adsai-654186807798.asia-southeast2.run.app`; bila tetap ditolak, kabari — kita pakai subdomain `adsai.tigapilar.co.id` |
 | Build sukses, deploy gagal: *Permission denied on secret* | Service account belum punya peran **Secret Manager Secret Accessor** → IAM → beri peran itu ke `654186807798-compute@developer.gserviceaccount.com` → Cloud Build → History → **Retry** |
+| Kartu "Gagal memuat konektor" / "Konektor tidak dikenal", terutama setelah deploy atau lama tidak dipakai | Sesi MCP hilang saat Cloud Run restart. Sudah diatasi: server berjalan **stateless** (`stateless_http=True`). Bila masih muncul, mulai chat baru |
 | `/healthz` 404 dari Google | Normal: Cloud Run memblokir path berakhiran `z`. Pakai `/health` |
 | `/health` 503 / revisi gagal start | Cloud Run → Logs. Biasanya secret belum diberi akses atau variabel `ADSAI_*` belum lengkap |
 | Login sukses tapi "Akses ditolak" | Email tidak ada di `ADSAI_ALLOWED_EMAILS` |
