@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -1234,6 +1234,28 @@ def decide_proposal(proposal_id: str, decision: str, confirm: bool = False) -> d
         p.status = proposals.REJECTED
     proposals.save(items)
     return {"status": p.status, "usulan": p.to_dict()}
+
+
+@tool
+def location_performance(customer_id: str | None = None, days: int = 30, level: str = "provinsi") -> dict:
+    """Performa iklan per daerah (level: provinsi | kota) sampai kemarin: tayangan, klik, biaya, konversi,
+    biaya/konversi, porsi biaya, dan temuan (daerah boros tanpa konversi, daerah paling efisien, CTR tidak wajar).
+    Tersedia di semua level akses API — pengganti sementara volume Keyword Planner per daerah (butuh Basic)."""
+    if level not in geo.LEVELS:
+        raise ValueError("level harus 'provinsi' atau 'kota'.")
+    if not 1 <= int(days) <= 365:
+        raise ValueError("days harus 1–365.")
+    a = ads()
+    cid = a.customer_id(customer_id)
+    s, e, _, _ = dashboard.period(days)
+    agg = geo.aggregate(a.search(cid, geo.query(level, s, e)), level)
+    names = {}
+    ids = [i for i in agg if i.isdigit()]
+    for k in range(0, len(ids), 200):
+        for r in a.search(cid, geo.names_query(ids[k:k + 200])):
+            names[str(r.get("geo_target_constant.id"))] = r.get("geo_target_constant.name")
+    return {"customer_id": cid, "periode": {"mulai": s.isoformat(), "selesai": e.isoformat()}, "level": level,
+            **geo.summarize(agg, names)}
 
 
 def main() -> None:
