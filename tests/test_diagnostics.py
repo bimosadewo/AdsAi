@@ -259,3 +259,23 @@ def test_developer_token_optional(monkeypatch, tmp_path):
     cfg = s.to_google_ads_dict()
     assert "developer_token" not in cfg and cfg["login_customer_id"] == "2214460264"
     assert "Cloud Console" in errors.HINTS["CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION"]
+
+
+def test_live_queries_use_only_real_gaql_fields():
+    """Kunci hasil (metrics.cost) ≠ nama field GAQL (metrics.cost_micros) — query harus memakai nama GAQL."""
+    import re
+    from gads_mcp import diagnostics
+    for q in diagnostics.live_queries("456").values():
+        assert not re.search(r"metrics\.cost\b(?!_)", q), q
+
+
+def test_pmax_judged_by_asset_groups_not_ad_groups():
+    from gads_mcp import diagnostics
+    base = {"kampanye": [{"campaign.id": "24366749484", "campaign.name": "TP PMax Maps Jabodetabek",
+                          "campaign.status": "ENABLED", "campaign.primary_status": "ELIGIBLE",
+                          "campaign.advertising_channel_type": "PERFORMANCE_MAX", "campaign_budget.amount": 50000}],
+            "grup": [], "iklan": [], "kata_kunci": [], "kemarin": [{"metrics.impressions": 10, "metrics.cost": 5000}]}
+    ok = diagnostics.assess_live({**base, "grup_aset": [{"asset_group.name": "AG1", "asset_group.ad_strength": "POOR"}]})
+    assert ok["vonis"] == "TAYANG" and "Kekuatan iklan" in ok["peringatan"][0] and ok["kemarin"]["biaya"] == 5000
+    bad = diagnostics.assess_live({**base, "grup_aset": []})
+    assert bad["vonis"] == "TIDAK_TAYANG" and any("grup aset" in s for s in bad["saran"])

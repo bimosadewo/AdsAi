@@ -98,7 +98,9 @@ def live_queries(campaign_id: str) -> dict[str, str]:
         "kata_kunci": ("SELECT ad_group_criterion.criterion_id FROM ad_group_criterion "
                        f"WHERE {c} AND ad_group_criterion.status = 'ENABLED' AND ad_group.status = 'ENABLED' "
                        "AND ad_group_criterion.type = 'KEYWORD' AND ad_group_criterion.negative = FALSE LIMIT 1"),
-        "kemarin": f"SELECT metrics.impressions, metrics.cost FROM campaign WHERE {c} AND segments.date DURING YESTERDAY",
+        "kemarin": f"SELECT metrics.impressions, metrics.cost_micros FROM campaign WHERE {c} AND segments.date DURING YESTERDAY",
+        "grup_aset": ("SELECT asset_group.id, asset_group.name, asset_group.status, asset_group.primary_status, "
+                      f"asset_group.ad_strength FROM asset_group WHERE {c} AND asset_group.status = 'ENABLED'"),
     }
 
 
@@ -121,11 +123,19 @@ def assess_live(data: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
         ("Status utama Google layak tayang", primary in LIVE_PRIMARY,
          f"{primary}" + (f" ({', '.join(reasons)})" if reasons else ""),
          "Baca alasan status utama; tersering: penagihan/saldo, iklan ditolak, atau budget terbatas."),
-        ("Ada grup iklan aktif", bool(data.get("grup")), len(data.get("grup") or []),
-         "Aktifkan minimal satu grup iklan."),
-        ("Ada iklan aktif yang tidak ditolak", bool(approved), f"{len(approved)} dari {len(ads)} iklan aktif",
-         "Perbaiki/aktifkan iklan; lihat campaign_structure untuk alasan penolakan."),
     ]
+    pmax = c.get("campaign.advertising_channel_type") == "PERFORMANCE_MAX"
+    groups = data.get("grup_aset") or []
+    if pmax:   # PMax tidak punya grup iklan/iklan biasa — yang dinilai grup aset
+        checks.append(("Ada grup aset aktif", bool(groups), len(groups),
+                       "Aktifkan grup aset (UI: Kampanye → Grup aset) — tanpa itu PMax tidak tayang."))
+    else:
+        checks += [
+            ("Ada grup iklan aktif", bool(data.get("grup")), len(data.get("grup") or []),
+             "Aktifkan minimal satu grup iklan."),
+            ("Ada iklan aktif yang tidak ditolak", bool(approved), f"{len(approved)} dari {len(ads)} iklan aktif",
+             "Perbaiki/aktifkan iklan; lihat campaign_structure untuk alasan penolakan."),
+        ]
     if search:
         checks.append(("Ada kata kunci aktif", bool(data.get("kata_kunci")), len(data.get("kata_kunci") or []),
                        "Tambahkan kata kunci dengan add_keywords."))
@@ -136,6 +146,10 @@ def assess_live(data: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     verdict = "TAYANG" if not failed else "TIDAK_TAYANG"
     out = {"kampanye": c.get("campaign.name"), "id": c.get("campaign.id"), "vonis": verdict, "cek": result_checks,
            "kemarin": {"tayangan": impressions, "biaya": float(y.get("metrics.cost") or 0)}}
+    weak = [g.get("asset_group.name") for g in groups if g.get("asset_group.ad_strength") in ("POOR", "AVERAGE")]
+    if pmax and weak:
+        out["peringatan"] = [f"Kekuatan iklan grup aset lemah ({', '.join(str(w) for w in weak)}): tambah judul, "
+                             "deskripsi, gambar (persegi & lanskap), logo, dan video agar jangkauan tidak dibatasi."]
     if verdict == "TAYANG" and impressions == 0:
         out["catatan"] = ("Semua syarat terpenuhi tetapi kemarin 0 tayangan — wajar untuk kampanye yang baru "
                           "diaktifkan/disetujui; bila sudah >2 hari, cek bid, kata kunci, dan penargetan lokasi.")
