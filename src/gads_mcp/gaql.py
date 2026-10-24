@@ -156,10 +156,16 @@ def q_offline_upload_summary() -> str:
 # ---------- Pengolah hasil ----------
 
 def flatten(obj: Any, prefix: str = "") -> dict[str, Any]:
-    """{'campaign': {'name': 'x'}} -> {'campaign.name': 'x'}."""
+    """{'campaign': {'name': 'x'}} -> {'campaign.name': 'x'}.
+
+    Library google-ads menamai ulang field yang bentrok dengan kata Python (`type` → `type_`). Nama dikembalikan
+    sesuai GAQL agar `campaign_criterion.type`, `conversion_action.type`, `ad_group_ad.ad.type` dst. terbaca —
+    tanpa ini target lokasi terlapor kosong dan beberapa pemeriksaan jenis (RSA, konversi) terlewati."""
     out: dict[str, Any] = {}
     if isinstance(obj, dict):
         for k, v in obj.items():
+            if k.endswith("_") and not k.endswith("__"):
+                k = k[:-1]
             key = f"{prefix}.{k}" if prefix else k
             if isinstance(v, dict):
                 out.update(flatten(v, key))
