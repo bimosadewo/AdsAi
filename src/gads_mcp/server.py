@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -1256,6 +1256,31 @@ def location_performance(customer_id: str | None = None, days: int = 30, level: 
             names[str(r.get("geo_target_constant.id"))] = r.get("geo_target_constant.name")
     return {"customer_id": cid, "periode": {"mulai": s.isoformat(), "selesai": e.isoformat()}, "level": level,
             **geo.summarize(agg, names)}
+
+
+@write_tool
+def create_search_campaign(name: str, daily_budget: float, geo_ids: list[str], ad_groups: list[dict],
+                           negative_keywords: list | None = None, schedule: list[dict] | None = None,
+                           bidding: str = "MAXIMIZE_CLICKS", max_cpc: float | None = None,
+                           languages: list[str] | None = None, final_urls: list[str] | None = None,
+                           headlines: list | None = None, descriptions: list | None = None,
+                           path1: str | None = None, path2: str | None = None,
+                           customer_id: str | None = None, confirm: bool = False) -> dict:
+    """Buat kampanye Penelusuran baru lengkap dalam SATU langkah atomik (gagal satu bagian = tidak ada yang
+    dibuat), selalu DIJEDA. Otomatis: hanya Google Search (Search Partners & Display OFF → tidak tayang di
+    YouTube/aplikasi/game), AI Max OFF, mode lokasi Kehadiran. Aset lokasi akun (Google Business Profile) ikut
+    otomatis sehingga iklan bisa tampil di Google Maps.
+    geo_ids: dari resolve_locations. ad_groups: [{"name", "keywords": ["teks" | {"text","match_type"}],
+    "headlines"?, "descriptions"?, "final_urls"?, "path1"?, "path2"?}] — headlines/descriptions/final_urls/path
+    di level atas dipakai untuk grup yang tidak mengisinya. Kata kunci string = PHRASE.
+    schedule: [{"day": "hari_kerja"|"Senin".., "start": "08:00", "end": "17:00"}] (zona waktu akun).
+    bidding: MAXIMIZE_CLICKS (pakai max_cpc sebagai batas) | MAXIMIZE_CONVERSIONS. languages default id+en."""
+    a = ads()
+    spec = {"name": name, "daily_budget": daily_budget, "geo_ids": geo_ids, "ad_groups": ad_groups,
+            "negative_keywords": negative_keywords, "schedule": schedule, "bidding": bidding, "max_cpc": max_cpc,
+            "languages": languages, "final_urls": final_urls, "headlines": headlines, "descriptions": descriptions,
+            "path1": path1, "path2": path2}
+    return campaigns.CampaignBuilder(mutator()).create(a.customer_id(customer_id), spec, confirm)
 
 
 def main() -> None:
