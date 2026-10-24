@@ -15,9 +15,19 @@ class SafetyError(ValueError):
     """Perubahan ditolak oleh aturan pengaman AdsAi (bukan oleh Google)."""
 
 
+def where_configured() -> str:
+    """Sebut SERVER mana yang menolak — server online dan server lokal (laptop) bisa punya setelan berbeda."""
+    if os.getenv("ADSAI_PUBLIC_URL"):
+        return (f"Server: ONLINE ({os.getenv('ADSAI_PUBLIC_URL')}). Ubah di Cloud Run → adsai → Edit & deploy new "
+                "revision → Variables → ADSAI_READ_ONLY=false.")
+    return ("Server: LOKAL di komputer ini (Claude Desktop / Claude Code). Ubah baris ADSAI_READ_ONLY di berkas .env "
+            "folder AdsAi menjadi false, lalu mulai ulang Claude Desktop. Connector AdsAi online punya setelan sendiri.")
+
+
 def ensure_writable(safety: Safety) -> None:
     if safety.read_only:
-        raise SafetyError("AdsAi sedang mode baca-saja (ADSAI_READ_ONLY=true). Perubahan tidak dijalankan.")
+        raise SafetyError("AdsAi sedang mode baca-saja (ADSAI_READ_ONLY=true). Perubahan tidak dijalankan. "
+                          + where_configured())
 
 
 def check_budget(safety: Safety, current: float | None, new: float) -> list[str]:
