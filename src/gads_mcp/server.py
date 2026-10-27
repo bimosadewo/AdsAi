@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, gbp, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, ga4, gaql, gbp, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -42,6 +42,8 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
 - "Pindai akun" / laporan pagi → watch_scan. Alarm: create_monitor (multi-syarat, pratinjau dulu), test_monitor.
 - Google Business Profile (profil Maps): gbp_status → gbp_locations (audit) / gbp_reviews; perubahan
   (gbp_post, gbp_reply_review, gbp_special_hours) juga pratinjau dulu. Draf balasan ulasan ditulis Claude.
+- Website/Google Analytics 4 (baca saja): ga4_overview (pengunjung, saluran, halaman masuk, klik WA);
+  ga4_report untuk pertanyaan lain. Bandingkan key event GA4 dengan konversi Google Ads bila relevan.
 - Saat pengguna tidak di tempat (mis. tugas terjadwal), JANGAN mengubah akun: masukkan usulan lewat
   propose_change. Pengguna memutuskan dengan list_proposals → decide_proposal (setujui/tolak, confirm=true).
 """
@@ -1454,6 +1456,87 @@ def gbp_special_hours(dates: list[str], account: str | None = None, locations: l
                                                    (r["hasil"].get("specialHours") or {}).get("specialHourPeriods", [])]}
                 for r in ok]
     return {"status": "DIJALANKAN" if not failed else "SEBAGIAN", **plan, "terverifikasi": verified[:10]}
+
+# ---------------------------------------------------------------------------
+# Google Analytics 4 (website): baca saja
+# ---------------------------------------------------------------------------
+
+_ga4: ga4.Ga4 | None = None
+
+
+def ga4_api() -> ga4.Ga4:
+    global _ga4
+    if _ga4 is None:
+        _ga4 = ga4.Ga4.from_settings(ads().settings)
+    return _ga4
+
+
+def _ga4_range(days: int, start: str | None, end: str | None) -> tuple[str, str]:
+    if start or end:
+        if not (start and end):
+            raise ga4.Ga4Error("Isi start dan end sekaligus (YYYY-MM-DD).")
+        return start, end
+    return ga4.date_range(days, today_local())
+
+
+@tool
+def ga4_properties() -> dict:
+    """Properti Google Analytics 4 (website) yang bisa dibaca AdsAi — milik sendiri dan klien yang sudah
+    menambahkan email agensi sebagai Viewer. Bila belum siap, menjelaskan langkah yang kurang."""
+    try:
+        props = ga4_api().properties()
+    except ga4.Ga4Error as ex:
+        return {"status": "BELUM_SIAP", "pesan": str(ex), "panduan": "docs/FASE-3-GA4.md"}
+    return {"status": "SIAP", "properti": props}
+
+
+@tool
+def ga4_overview(property: str | None = None, days: int = 30, start: str | None = None,
+                 end: str | None = None) -> dict:
+    """Ringkasan website dari GA4: pengunjung & kunjungan per saluran (iklan, organik, langsung, sosial),
+    halaman masuk teratas + tingkat keterlibatan, event teratas (mis. klik WhatsApp/telepon), dan temuan.
+    property: nama/ID properti (lihat ga4_properties); kosong bila hanya satu. Default 30 hari sampai kemarin."""
+    api = ga4_api()
+    prop = ga4.pick_property(api.properties(), property)
+    s, e = _ga4_range(days, start, end)
+    pid = prop["properti"]
+    channels = api.run_report(pid, s, e, ["sessionDefaultChannelGroup"],
+                              ["sessions", "totalUsers", "engagedSessions", "keyEvents"], 20, "sessions")
+    pages = api.run_report(pid, s, e, ["landingPagePlusQueryString"],
+                           ["sessions", "engagementRate", "keyEvents"], 15, "sessions")
+    events = api.run_report(pid, s, e, ["eventName"], ["eventCount", "keyEvents"], 25, "eventCount")
+    total = {k: sum(c.get(k, 0) for c in channels) for k in ("sessions", "totalUsers", "engagedSessions", "keyEvents")}
+    return {"properti": pid, "nama": prop["nama"], "periode": {"mulai": s, "selesai": e},
+            "total": {"kunjungan": total["sessions"], "pengguna_per_saluran_dijumlah": total["totalUsers"],
+                      "kunjungan_terlibat": total["engagedSessions"], "key_event": total["keyEvents"]},
+            "temuan": ga4.overview_findings(channels, pages, events),
+            "saluran": channels, "halaman_masuk": pages, "event": events,
+            "catatan": "Pengguna per saluran dijumlah bisa lebih besar dari pengguna unik (satu orang bisa datang "
+                       "dari beberapa saluran)."}
+
+
+@tool
+def ga4_report(dimensions: list[str], metrics: list[str], property: str | None = None, days: int = 30,
+               start: str | None = None, end: str | None = None, limit: int = 50,
+               contains: dict[str, str] | None = None) -> dict:
+    """Laporan GA4 bebas (seperti run_query untuk Google Ads). Contoh dimensi: date, sessionSourceMedium,
+    sessionDefaultChannelGroup, landingPagePlusQueryString, pagePath, eventName, city, region, deviceCategory,
+    sessionGoogleAdsCampaignName. Contoh metrik: sessions, totalUsers, newUsers, engagedSessions,
+    engagementRate, averageSessionDuration, screenPageViews, eventCount, keyEvents.
+    contains: filter teks, mis. {"eventName": "whatsapp"} atau {"pagePath": "/plastik-cor"}."""
+    if not dimensions or not metrics:
+        raise ga4.Ga4Error("Isi minimal satu dimensi dan satu metrik.")
+    api = ga4_api()
+    prop = ga4.pick_property(api.properties(), property)
+    s, e = _ga4_range(days, start, end)
+    filt = None
+    if contains:
+        exprs = [{"filter": {"fieldName": k, "stringFilter": {"matchType": "CONTAINS", "value": v,
+                                                               "caseSensitive": False}}} for k, v in contains.items()]
+        filt = exprs[0] if len(exprs) == 1 else {"andGroup": {"expressions": exprs}}
+    data = api.run_report(prop["properti"], s, e, dimensions, metrics, min(max(limit, 1), 1000), metrics[0], filt)
+    return {"properti": prop["properti"], "nama": prop["nama"], "periode": {"mulai": s, "selesai": e},
+            "jumlah_baris": len(data), "baris": data}
 
 
 def main() -> None:

@@ -78,6 +78,7 @@ class Settings:
     safety: Safety = field(default_factory=Safety)
     clients_file: Path = Path("clients.yaml")
     gbp_refresh_token: str = ""   # Google Business Profile (scope business.manage); opsional
+    ga4_refresh_token: str = ""   # Google Analytics 4 (scope analytics.readonly); opsional
 
     def to_google_ads_dict(self) -> dict:
         cfg = {
@@ -128,4 +129,5 @@ def load_settings() -> Settings:
         safety=Safety.from_env(),
         clients_file=Path(os.getenv("ADSAI_CLIENTS_FILE") or PROJECT_ROOT / "clients.yaml"),
         gbp_refresh_token=_cred("GBP_REFRESH_TOKEN"),
+        ga4_refresh_token=_cred("GA4_REFRESH_TOKEN"),
     )
