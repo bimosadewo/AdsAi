@@ -77,6 +77,7 @@ class Settings:
     default_customer_id: str
     safety: Safety = field(default_factory=Safety)
     clients_file: Path = Path("clients.yaml")
+    gbp_refresh_token: str = ""   # Google Business Profile (scope business.manage); opsional
 
     def to_google_ads_dict(self) -> dict:
         cfg = {
@@ -126,4 +127,5 @@ def load_settings() -> Settings:
         default_customer_id=normalize_customer_id(os.getenv("GOOGLE_ADS_DEFAULT_CUSTOMER_ID")),
         safety=Safety.from_env(),
         clients_file=Path(os.getenv("ADSAI_CLIENTS_FILE") or PROJECT_ROOT / "clients.yaml"),
+        gbp_refresh_token=_cred("GBP_REFRESH_TOKEN"),
     )

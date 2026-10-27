@@ -6,6 +6,11 @@ Cara pakai:
     2. python scripts/generate_refresh_token.py --login-customer-id 221-446-0264 --default-customer-id 582-757-2362
     3. Browser terbuka -> login dengan akun Google yang punya akses ke MCC -> Izinkan.
     4. Nilai rahasia ditulis langsung ke .env (tidak dicetak ke layar). Pakai --print bila ingin melihatnya.
+
+Google Business Profile (setelah akses API GBP disetujui, lihat docs/FASE-1-GBP.md):
+    python scripts/generate_refresh_token.py --gbp
+    Login dengan akun Google yang menjadi Pemilik/Pengelola profil. Hanya GBP_REFRESH_TOKEN yang ditulis;
+    token Google Ads tidak disentuh. Pakai client_secret.json yang SAMA dengan Google Ads.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from pathlib import Path
 from google_auth_oauthlib.flow import InstalledAppFlow
 
 SCOPES = ["https://www.googleapis.com/auth/adwords"]
+GBP_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -52,25 +58,29 @@ def main() -> None:
     parser.add_argument("--login-customer-id", help="ID akun MCC, mis. 221-446-0264")
     parser.add_argument("--default-customer-id", help="Akun klien default, mis. 582-757-2362")
     parser.add_argument("--print", action="store_true", help="Cetak nilai rahasia ke layar (jangan dibagikan)")
+    parser.add_argument("--gbp", action="store_true",
+                        help="Buat GBP_REFRESH_TOKEN (Google Business Profile) saja, token Google Ads tidak diubah")
     args = parser.parse_args()
 
-    flow = InstalledAppFlow.from_client_secrets_file(args.client_secrets, scopes=SCOPES)
+    flow = InstalledAppFlow.from_client_secrets_file(args.client_secrets, scopes=GBP_SCOPES if args.gbp else SCOPES)
     creds = flow.run_local_server(port=0, prompt="consent", access_type="offline")
     if not creds.refresh_token:
-        raise SystemExit("Google tidak mengembalikan refresh token. Hapus akses AdsAi di "
+        raise SystemExit("Google tidak mengembalikan refresh token. Jalankan ulang." if args.gbp else
+                         # Jangan sarankan mencabut akses untuk --gbp: itu ikut mematikan token Google Ads.
+                         "Google tidak mengembalikan refresh token. Hapus akses AdsAi di "
                          "myaccount.google.com/permissions lalu jalankan ulang.")
 
     with open(args.client_secrets, encoding="utf-8") as fh:
         info = json.load(fh)
     client = info.get("installed") or info.get("web") or {}
-    values = {
+    values = {"GBP_REFRESH_TOKEN": creds.refresh_token} if args.gbp else {
         "GOOGLE_ADS_CLIENT_ID": client.get("client_id", ""),
         "GOOGLE_ADS_CLIENT_SECRET": client.get("client_secret", ""),
         "GOOGLE_ADS_REFRESH_TOKEN": creds.refresh_token,
     }
-    if args.login_customer_id:
+    if args.login_customer_id and not args.gbp:
         values["GOOGLE_ADS_LOGIN_CUSTOMER_ID"] = digits(args.login_customer_id)
-    if args.default_customer_id:
+    if args.default_customer_id and not args.gbp:
         values["GOOGLE_ADS_DEFAULT_CUSTOMER_ID"] = digits(args.default_customer_id)
 
     env = Path(args.env)

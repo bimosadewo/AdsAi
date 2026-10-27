@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, gaql, gbp, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -40,6 +40,8 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
 - "Jeda/hentikan" = set_status PAUSED, bukan remove_*. Menghapus butuh confirm_delete=true.
 - Untuk kebutuhan yang tidak tercakup tool lain, pakai run_query dengan GAQL.
 - "Pindai akun" / laporan pagi → watch_scan. Alarm: create_monitor (multi-syarat, pratinjau dulu), test_monitor.
+- Google Business Profile (profil Maps): gbp_status → gbp_locations (audit) / gbp_reviews; perubahan
+  (gbp_post, gbp_reply_review, gbp_special_hours) juga pratinjau dulu. Draf balasan ulasan ditulis Claude.
 - Saat pengguna tidak di tempat (mis. tugas terjadwal), JANGAN mengubah akun: masukkan usulan lewat
   propose_change. Pengguna memutuskan dengan list_proposals → decide_proposal (setujui/tolak, confirm=true).
 """
@@ -1281,6 +1283,177 @@ def create_search_campaign(name: str, daily_budget: float, geo_ids: list[str], a
             "languages": languages, "final_urls": final_urls, "headlines": headlines, "descriptions": descriptions,
             "path1": path1, "path2": path2}
     return campaigns.CampaignBuilder(mutator()).create(a.customer_id(customer_id), spec, confirm)
+
+# ---------------------------------------------------------------------------
+# Google Business Profile (profil Maps): lokasi, ulasan, postingan, jam khusus
+# ---------------------------------------------------------------------------
+
+_gbp: gbp.Gbp | None = None
+
+REPLY_GUIDE = (
+    "Draf balasan: sapa nama pengulas, terima kasih, sebut hal spesifik dari ulasannya, 2–4 kalimat, bahasa sopan "
+    "sesuai bahasa ulasan. Ulasan negatif: minta maaf tanpa menyalahkan, jangan berdebat, ajak lanjut lewat "
+    "kontak resmi. Jangan menjanjikan diskon/kompensasi, jangan menyebut data pribadi (untuk layanan kesehatan: "
+    "jangan membenarkan bahwa pengulas adalah pasien). Tunjukkan draf ke pengguna sebelum gbp_reply_review confirm=true.")
+
+
+def gbp_api() -> gbp.Gbp:
+    global _gbp
+    if _gbp is None:
+        _gbp = gbp.Gbp.from_settings(ads().settings)
+    return _gbp
+
+
+def _gbp_account(account: str | None) -> dict:
+    return gbp.pick_account(gbp_api().accounts(), account)
+
+
+def _gbp_audit(account_id: str, action: str, target: dict, before: Any, after: Any, result: str) -> None:
+    AuditLog(ads().settings.safety.audit_log_dir).write(f"gbp-{account_id}", action, target, before, after, result)
+
+
+def _gbp_writable() -> None:
+    from .safety import ensure_writable
+    ensure_writable(ads().settings.safety)
+
+
+@tool
+def gbp_status() -> dict:
+    """Cek apakah akses Google Business Profile (profil Google Maps) sudah siap, dan akun/grup lokasi apa saja
+    yang bisa dikelola. Bila belum siap, menjelaskan langkah yang kurang (token, persetujuan Google, API)."""
+    try:
+        accounts = gbp_api().accounts()
+    except gbp.GbpError as ex:
+        return {"status": "BELUM_SIAP", "pesan": str(ex), "panduan": "docs/FASE-1-GBP.md"}
+    return {"status": "SIAP", "akun": [{"akun": a.get("name"), "nama": a.get("accountName"), "jenis": a.get("type"),
+                                       "peran": a.get("role")} for a in accounts]}
+
+
+@tool
+def gbp_locations(account: str | None = None, locations: list[str] | None = None) -> dict:
+    """Daftar lokasi/cabang Google Business Profile + AUDIT KELENGKAPAN profil (skor 0–100 per cabang dan apa yang
+    perlu dilengkapi: verifikasi, kategori, telepon, website, jam, deskripsi, alamat). account: nama/ID akun atau
+    grup lokasi (lihat gbp_status). locations: filter ID/potongan nama/kode toko; kosong = semua."""
+    acc = _gbp_account(account)
+    locs = gbp.filter_locations(gbp_api().locations(acc["name"]), locations)
+    return {"akun": acc.get("name"), "nama_akun": acc.get("accountName"), **gbp.audit(locs)}
+
+
+@tool
+def gbp_reviews(account: str | None = None, locations: list[str] | None = None, only_unreplied: bool = True,
+                limit: int = 20) -> dict:
+    """Ulasan Google per cabang: rata-rata bintang, jumlah, dan ulasan terbaru (default hanya yang BELUM dibalas,
+    maksimal `limit` per cabang). Untuk membalas: tulis draf, tunjukkan ke pengguna, lalu gbp_reply_review."""
+    acc = _gbp_account(account)
+    api = gbp_api()
+    out, all_rows = [], []
+    for loc in gbp.filter_locations(api.locations(acc["name"]), locations):
+        data = api.reviews(acc["name"], loc["name"], limit=max(limit, 50) if only_unreplied else limit)
+        rows = [gbp.review_row(r) for r in data["reviews"]]
+        all_rows += rows
+        shown = [r for r in rows if not r["balasan"]] if only_unreplied else rows
+        out.append({"lokasi": loc["name"], "nama": loc.get("title"), "rata_rata": data["averageRating"],
+                    "jumlah_ulasan": data["totalReviewCount"], "ulasan": shown[:limit]})
+    return {"akun": acc.get("name"), "temuan": gbp.review_findings(all_rows), "cabang": out,
+            "panduan_balasan": REPLY_GUIDE}
+
+
+@write_tool
+def gbp_reply_review(review: str, comment: str, confirm: bool = False) -> dict:
+    """Balas (atau ganti balasan) satu ulasan Google. review: ID lengkap dari gbp_reviews
+    ('accounts/../locations/../reviews/..'). comment: teks balasan (maks 4096 karakter)."""
+    if not review.startswith("accounts/") or "/reviews/" not in review:
+        raise gbp.GbpError("review harus ID lengkap dari gbp_reviews: accounts/{a}/locations/{l}/reviews/{r}.")
+    notes = gbp.check_reply(comment)
+    api = gbp_api()
+    before = gbp.review_row(api.review(review))
+    if before["balasan"]:
+        notes.append("Ulasan ini sudah punya balasan; balasan lama akan DIGANTI.")
+    plan = {"aksi": "gbp_reply_review", "target": {"ulasan": review}, "ulasan": before,
+            "sesudah": {"balasan": comment.strip()}, "catatan": notes}
+    if not confirm:
+        return {"status": "PRATINJAU", **plan,
+                "pesan": "Belum dikirim. Google tidak menyediakan validasi balasan; tinjau teksnya lalu confirm=true."}
+    _gbp_writable()
+    api.reply(review, comment.strip())
+    after = gbp.review_row(api.review(review))
+    _gbp_audit(review.split("/")[1], "gbp_reply_review", {"ulasan": review}, before["balasan"], after["balasan"],
+               "OK")
+    return {"status": "DIJALANKAN", **plan, "terverifikasi": after}
+
+
+@write_tool
+def gbp_post(summary: str, account: str | None = None, locations: list[str] | None = None,
+             topic: str = "STANDARD", cta_type: str | None = None, cta_url: str | None = None,
+             image_url: str | None = None, title: str | None = None, start: str | None = None,
+             end: str | None = None, coupon: str | None = None, terms: str | None = None,
+             confirm: bool = False) -> dict:
+    """Posting berita/promo/acara SERENTAK ke banyak cabang Google Business Profile, teks otomatis disesuaikan per
+    cabang lewat placeholder {nama} {kota} {alamat} {telepon} {website} {kode}. locations kosong = semua cabang.
+    topic: STANDARD (berita) | OFFER (promo, wajib title/start/end, opsional coupon/terms) | EVENT (acara).
+    cta_type: BOOK | ORDER | SHOP | LEARN_MORE | SIGN_UP | CALL (selain CALL wajib cta_url).
+    image_url: link https publik ke gambar. Tanggal YYYY-MM-DD. Maks 1500 karakter."""
+    acc = _gbp_account(account)
+    api = gbp_api()
+    locs = gbp.filter_locations(api.locations(acc["name"]), locations)
+    if not locs:
+        raise gbp.GbpError("Tidak ada lokasi yang cocok.")
+    bodies, notes = {}, []
+    for loc in locs:
+        body, n = gbp.build_post(gbp.render(summary, loc), topic, cta_type, cta_url, image_url, title, start, end,
+                                 coupon, terms)
+        bodies[loc["name"]] = body
+        notes += [x for x in n if x not in notes]
+    per_branch = [{"nama": l.get("title"), "kota": gbp.city(l), "teks": bodies[l["name"]]["summary"]} for l in locs]
+    plan = {"aksi": "gbp_post", "target": {"akun": acc["name"], "jumlah_cabang": len(locs)},
+            "jenis": topic.upper(), "tombol": cta_type, "gambar": image_url, "per_cabang": per_branch[:10],
+            "catatan": notes + ([f"(+{len(locs) - 10} cabang lain, teks mengikuti pola yang sama)"]
+                                if len(locs) > 10 else [])}
+    if not confirm:
+        return {"status": "PRATINJAU", **plan,
+                "pesan": "Belum diposting. Google meninjau postingan setelah dikirim (bisa ditolak bila melanggar "
+                         "kebijakan); API postingan tidak punya mode validasi."}
+    _gbp_writable()
+    ok, failed = gbp.fan_out(locs, lambda l: api.create_post(acc["name"], l["name"], bodies[l["name"]]))
+    created = [{"nama": r["nama"], "postingan": r["hasil"].get("name"), "status_google": r["hasil"].get("state"),
+                "lihat": r["hasil"].get("searchUrl")} for r in ok]
+    _gbp_audit(acc["name"].split("/")[-1], "gbp_post", plan["target"], None,
+               {"ringkas": summary[:200], "berhasil": len(ok), "gagal": len(failed)}, "OK" if not failed else "SEBAGIAN")
+    return {"status": "DIJALANKAN" if not failed else "SEBAGIAN", **plan, "berhasil": created, "gagal": failed}
+
+
+@write_tool
+def gbp_special_hours(dates: list[str], account: str | None = None, locations: list[str] | None = None,
+                      closed: bool = True, open_time: str | None = None, close_time: str | None = None,
+                      confirm: bool = False) -> dict:
+    """Pasang jam khusus (libur nasional, cuti bersama, jam pendek) SERENTAK di banyak cabang. dates: daftar
+    tanggal YYYY-MM-DD. closed=true = tutup seharian; closed=false + open_time/close_time (HH:MM) = jam khusus.
+    Jam khusus lama di tanggal lain TETAP dipertahankan. locations kosong = semua cabang.
+    Pratinjau divalidasi Google (validateOnly) per cabang."""
+    periods = gbp.special_periods(dates, closed, open_time, close_time)
+    acc = _gbp_account(account)
+    api = gbp_api()
+    locs = gbp.filter_locations(api.locations(acc["name"]), locations)
+    merged = {l["name"]: gbp.merge_special_hours(l.get("specialHours"), periods) for l in locs}
+    if confirm:
+        _gbp_writable()
+    ok, failed = gbp.fan_out(locs, lambda l: api.patch_special_hours(l["name"], merged[l["name"]],
+                                                                     validate_only=not confirm))
+    rows = [{"nama": l.get("title"),
+             "sebelum": [gbp.describe_period(p) for p in (l.get("specialHours") or {}).get("specialHourPeriods", [])],
+             "sesudah": [gbp.describe_period(p) for p in merged[l["name"]]["specialHourPeriods"]]} for l in locs]
+    plan = {"aksi": "gbp_special_hours", "target": {"akun": acc["name"], "jumlah_cabang": len(locs)},
+            "jam_baru": [gbp.describe_period(p) for p in periods], "per_cabang": rows[:10], "gagal": failed}
+    if not confirm:
+        return {"status": "PRATINJAU", **plan,
+                "pesan": f"Lolos validasi Google di {len(ok)} dari {len(locs)} cabang. Belum ada yang diubah."}
+    _gbp_audit(acc["name"].split("/")[-1], "gbp_special_hours", plan["target"], None,
+               {"jam_baru": plan["jam_baru"], "berhasil": len(ok), "gagal": len(failed)},
+               "OK" if not failed else "SEBAGIAN")
+    verified = [{"nama": r["nama"], "jam_khusus": [gbp.describe_period(p) for p in
+                                                   (r["hasil"].get("specialHours") or {}).get("specialHourPeriods", [])]}
+                for r in ok]
+    return {"status": "DIJALANKAN" if not failed else "SEBAGIAN", **plan, "terverifikasi": verified[:10]}
 
 
 def main() -> None:
