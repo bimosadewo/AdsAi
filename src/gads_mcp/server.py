@@ -367,13 +367,14 @@ def set_status(level: str, ids: list[str], status: str, customer_id: str | None 
 def update_conversion_action(conversion_action_id: str, customer_id: str | None = None, confirm: bool = False,
                              primary_for_goal: bool | None = None, counting_type: str | None = None,
                              click_through_days: int | None = None, view_through_days: int | None = None,
-                             status: str | None = None) -> dict:
+                             status: str | None = None, call_duration_seconds: int | None = None) -> dict:
     """Ubah conversion action: Utama/Sekunder (primary_for_goal), counting_type (ONE_PER_CLICK/MANY_PER_CLICK),
-    jangka waktu klik (1-90) / tayang (1-30) hari, status (ENABLED/HIDDEN)."""
+    jangka waktu klik (1-90) / tayang (1-30) hari, status (ENABLED/HIDDEN), call_duration_seconds (durasi
+    minimum panggilan agar dihitung konversi, untuk aksi panggilan dari iklan)."""
     a = ads()
     return mutator().update_conversion_action(
         a.customer_id(customer_id), conversion_action_id, confirm, primary_for_goal, counting_type,
-        click_through_days, view_through_days, status)
+        click_through_days, view_through_days, status, call_duration_seconds)
 
 
 @write_tool
@@ -1273,6 +1274,7 @@ def create_search_campaign(name: str, daily_budget: float, geo_ids: list[str], a
                            languages: list[str] | None = None, final_urls: list[str] | None = None,
                            headlines: list | None = None, descriptions: list | None = None,
                            path1: str | None = None, path2: str | None = None,
+                           location_asset_set_id: str | None = None,
                            customer_id: str | None = None, confirm: bool = False) -> dict:
     """Buat kampanye Penelusuran baru lengkap dalam SATU langkah atomik (gagal satu bagian = tidak ada yang
     dibuat), selalu DIJEDA. Otomatis: hanya Google Search (Search Partners & Display OFF → tidak tayang di
@@ -1282,9 +1284,11 @@ def create_search_campaign(name: str, daily_budget: float, geo_ids: list[str], a
     "headlines"?, "descriptions"?, "final_urls"?, "path1"?, "path2"?}] — headlines/descriptions/final_urls/path
     di level atas dipakai untuk grup yang tidak mengisinya. Kata kunci string = PHRASE.
     schedule: [{"day": "hari_kerja"|"Senin".., "start": "08:00", "end": "17:00"}] (zona waktu akun).
-    bidding: MAXIMIZE_CLICKS (pakai max_cpc sebagai batas) | MAXIMIZE_CONVERSIONS. languages default id+en."""
+    bidding: MAXIMIZE_CLICKS (pakai max_cpc sebagai batas) | MAXIMIZE_CONVERSIONS. languages default id+en.
+    location_asset_set_id: batasi lokasi Maps ke satu grup lokasi (asset_set STATIC/DYNAMIC_LOCATION_GROUP, cari
+    lewat run_query FROM asset_set) — dipakai bila akun punya beberapa lokasi Business Profile."""
     a = ads()
-    spec = {"name": name, "daily_budget": daily_budget, "geo_ids": geo_ids, "ad_groups": ad_groups,
+    spec = {"location_asset_set_id": location_asset_set_id, "name": name, "daily_budget": daily_budget, "geo_ids": geo_ids, "ad_groups": ad_groups,
             "negative_keywords": negative_keywords, "schedule": schedule, "bidding": bidding, "max_cpc": max_cpc,
             "languages": languages, "final_urls": final_urls, "headlines": headlines, "descriptions": descriptions,
             "path1": path1, "path2": path2}

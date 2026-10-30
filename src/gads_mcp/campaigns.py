@@ -78,9 +78,12 @@ def plan(spec: dict[str, Any]) -> dict[str, Any]:
         bad = copy.errors + rsa.validate_urls(urls) + ([] if urls else ["final_urls wajib diisi."])
         errs += [f"Grup '{gname}' iklan: {e}" for e in bad]
         groups.append({"name": gname, "keywords": kws, "copy": copy, "final_urls": list(urls)})
+    loc_set = str(spec.get("location_asset_set_id") or "").split("/")[-1].strip()
+    if loc_set and not loc_set.isdigit():
+        errs.append("location_asset_set_id harus angka (ID grup lokasi dari asset_set).")
     if errs:
         raise ValueError("Rancangan kampanye belum valid:\n- " + "\n- ".join(errs))
-    return {"name": name, "daily_budget": budget, "geo_ids": geo_ids, "bidding": bidding,
+    return {"location_asset_set_id": loc_set or None, "name": name, "daily_budget": budget, "geo_ids": geo_ids, "bidding": bidding,
             "max_cpc": float(cpc_cap) if cpc_cap else None, "languages": langs, "schedule": schedule,
             "negatives": negatives, "groups": groups}
 
@@ -92,6 +95,8 @@ def summary(p: dict[str, Any]) -> dict[str, Any]:
         "ai_max": False, "mode_lokasi": "PRESENCE (Kehadiran)",
         "bidding": p["bidding"] + (f" (CPC maks Rp{p['max_cpc']:,.0f})".replace(",", ".") if p["max_cpc"] else ""),
         "lokasi_geo_ids": p["geo_ids"], "bahasa": p["languages"],
+        "aset_lokasi_maps": (f"hanya grup lokasi {p['location_asset_set_id']}" if p.get("location_asset_set_id")
+                             else "semua aset lokasi akun"),
         "jadwal": [fmt_window(w) for w in p["schedule"]] or "24 jam",
         "kata_kunci_negatif": [k["text"] for k in p["negatives"]],
         "grup_iklan": [{"nama": g["name"], "kata_kunci": [f"{k['text']} [{k['match_type']}]" for k in g["keywords"]],
@@ -173,6 +178,14 @@ class CampaignBuilder:
             cc.keyword.text = k["text"]
             cc.keyword.match_type = getattr(e.KeywordMatchTypeEnum, k["match_type"])
 
+        if p.get("location_asset_set_id"):
+            # Grup lokasi di level kampanye: hanya lokasi di grup ini yang tampil (bukan semua lokasi akun).
+            o = self._op()
+            cas = o.campaign_asset_set_operation.create
+            cas.campaign = camp_rn
+            cas.asset_set = f"customers/{cid}/assetSets/{p['location_asset_set_id']}"
+            ops.append(o)
+
         for i, g in enumerate(p["groups"]):
             ag_rn = f"customers/{cid}/adGroups/{-10 - i}"
             o = self._op()
@@ -215,8 +228,11 @@ class CampaignBuilder:
             raise ValueError(f"Sudah ada kampanye bernama '{p['name']}' (ID {dup[0].get('campaign.id')}). Pakai nama lain.")
         for g in p["groups"]:
             notes += g["copy"].warnings
-        notes += ["Kampanye dibuat DIJEDA. Aset lokasi (Google Business Profile) di level akun otomatis ikut — "
-                  "itulah yang membuat iklan bisa muncul di Google Maps.",
+        notes += ["Kampanye dibuat DIJEDA. " + (
+                  "Aset lokasi dibatasi ke grup lokasi yang dipilih — hanya lokasi itu yang muncul di Google Maps."
+                  if p.get("location_asset_set_id") else
+                  "Aset lokasi (Google Business Profile) di level akun otomatis ikut — itulah yang membuat iklan bisa "
+                  "muncul di Google Maps."),
                   "Iklan baru ditinjau Google (biasanya < 1 hari).",
                   "Aktifkan dengan set_status level='campaign' setelah dicek; lalu verify_campaign_is_live."]
         ops = self.operations(cid, p)

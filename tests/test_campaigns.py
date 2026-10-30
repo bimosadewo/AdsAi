@@ -66,3 +66,16 @@ def test_maximize_conversions_sets_oneof():
     p = campaigns.plan({**SPEC, "bidding": "MAXIMIZE_CONVERSIONS"})
     c = campaigns.CampaignBuilder(FakeMutator()).operations("1", p)[1].campaign_operation.create
     assert type(c).pb(c).WhichOneof("campaign_bidding_strategy") == "maximize_conversions"
+
+
+def test_location_group_links_only_that_group():
+    p = campaigns.plan({**SPEC, "location_asset_set_id": "9099504071"})
+    ops = campaigns.CampaignBuilder(FakeMutator()).operations("1935434488", p)
+    links = [o.campaign_asset_set_operation.create for o in ops if o.campaign_asset_set_operation.create.asset_set]
+    assert [l.asset_set for l in links] == ["customers/1935434488/assetSets/9099504071"]
+    assert links[0].campaign == "customers/1935434488/campaigns/-2"
+    assert "9099504071" in campaigns.summary(p)["aset_lokasi_maps"]
+    assert not [o for o in campaigns.CampaignBuilder(FakeMutator()).operations("1", campaigns.plan(SPEC))
+                if o.campaign_asset_set_operation.create.asset_set]
+    with pytest.raises(ValueError, match="location_asset_set_id"):
+        campaigns.plan({**SPEC, "location_asset_set_id": "abc"})

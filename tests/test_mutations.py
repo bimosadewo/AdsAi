@@ -133,6 +133,9 @@ def test_update_conversion_action(tmp_path):
         m.update_conversion_action(CID, "7340319524", confirm=False)
     with pytest.raises(ValueError):
         m.update_conversion_action(CID, "7340319524", confirm=False, view_through_days=60)
+    m.update_conversion_action(CID, "7255911770", confirm=False, call_duration_seconds=60)
+    op = ads.calls[-1][1]["operations"][0]
+    assert op.update.phone_call_duration_seconds == 60 and list(op.update_mask.paths) == ["phone_call_duration_seconds"]
 
 
 def test_update_bid_strategy(tmp_path):

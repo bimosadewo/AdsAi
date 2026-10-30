@@ -342,13 +342,15 @@ class Mutator:
         click_through_days: int | None = None,
         view_through_days: int | None = None,
         status: str | None = None,
+        call_duration_seconds: int | None = None,
     ) -> dict:
         ca_id = _digits(conversion_action_id, "conversion_action_id")
         q_ca = (
             "SELECT conversion_action.id, conversion_action.name, conversion_action.type, "
             "conversion_action.primary_for_goal, conversion_action.counting_type, "
             "conversion_action.click_through_lookback_window_days, "
-            "conversion_action.view_through_lookback_window_days, conversion_action.status "
+            "conversion_action.view_through_lookback_window_days, conversion_action.status, "
+            "conversion_action.phone_call_duration_seconds "
             f"FROM conversion_action WHERE conversion_action.id = {ca_id}"
         )
         rows = self.ads.search(cid, q_ca)
@@ -389,6 +391,12 @@ class Mutator:
             ca.status = getattr(self.gc.enums.ConversionActionStatusEnum, st)
             op.update_mask.paths.append("status")
             after["status"] = st
+        if call_duration_seconds is not None:
+            if not 0 <= call_duration_seconds <= 10800:
+                raise ValueError("call_duration_seconds harus 0-10800 detik.")
+            ca.phone_call_duration_seconds = call_duration_seconds
+            op.update_mask.paths.append("phone_call_duration_seconds")
+            after["call_duration_seconds"] = call_duration_seconds
         if not after:
             raise ValueError("Tidak ada field yang diubah.")
         ca_type = str(before.get("conversion_action.type"))
