@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, ga4, gaql, gbp, goals, geo, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, ga4, gaql, gbp, goals, geo, meta, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -44,6 +44,8 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
   (gbp_post, gbp_reply_review, gbp_special_hours) juga pratinjau dulu. Draf balasan ulasan ditulis Claude.
 - Website/Google Analytics 4 (baca saja): ga4_overview (pengunjung, saluran, halaman masuk, klik WA);
   ga4_report untuk pertanyaan lain. Bandingkan key event GA4 dengan konversi Google Ads bila relevan.
+- Meta Ads / Facebook / Instagram (baca saja): meta_status → meta_performance (kampanye, hasil WA/prospek,
+  penempatan); meta_insights untuk rincian (umur, gender, penempatan, wilayah, harian).
 - Saat pengguna tidak di tempat (mis. tugas terjadwal), JANGAN mengubah akun: masukkan usulan lewat
   propose_change. Pengguna memutuskan dengan list_proposals → decide_proposal (setujui/tolak, confirm=true).
 """
@@ -1537,6 +1539,88 @@ def ga4_report(dimensions: list[str], metrics: list[str], property: str | None =
     data = api.run_report(prop["properti"], s, e, dimensions, metrics, min(max(limit, 1), 1000), metrics[0], filt)
     return {"properti": prop["properti"], "nama": prop["nama"], "periode": {"mulai": s, "selesai": e},
             "jumlah_baris": len(data), "baris": data}
+
+# ---------------------------------------------------------------------------
+# Meta Ads (Facebook & Instagram): baca saja
+# ---------------------------------------------------------------------------
+
+_meta: meta.Meta | None = None
+
+
+def meta_api() -> meta.Meta:
+    global _meta
+    if _meta is None:
+        _meta = meta.Meta.from_settings(ads().settings)
+    return _meta
+
+
+def _meta_account(account: str | None) -> dict:
+    return meta.pick_account(meta_api().ad_accounts(), account or ads().settings.meta_default_account or None)
+
+
+@tool
+def meta_status() -> dict:
+    """Cek koneksi Meta Ads (Facebook/Instagram) dan daftar akun iklan yang bisa dibaca beserta statusnya
+    (aktif, tunggakan, dll.). Bila belum siap, menjelaskan langkah yang kurang."""
+    try:
+        accounts = meta_api().ad_accounts()
+    except meta.MetaError as ex:
+        return {"status": "BELUM_SIAP", "pesan": str(ex), "panduan": "docs/META-ADS.md"}
+    return {"status": "SIAP", "akun": accounts}
+
+
+@tool
+def meta_performance(account: str | None = None, days: int = 30, start: str | None = None,
+                     end: str | None = None) -> dict:
+    """Performa Meta Ads (Facebook & Instagram): total biaya, tayangan, jangkauan, frekuensi, klik, hasil
+    (percakapan WA, prospek, pembelian, kontak) + biaya per hasil, perbandingan periode sebelumnya, tabel per
+    kampanye (status, tujuan, budget), porsi biaya per platform (Facebook/Instagram/Audience Network/Messenger),
+    dan temuan. account: nama/ID akun (lihat meta_status). Default 30 hari sampai kemarin; maks 90."""
+    api = meta_api()
+    acc = _meta_account(account)
+    if start or end:
+        if not (start and end):
+            raise meta.MetaError("Isi start dan end sekaligus (YYYY-MM-DD).")
+        cur, prev = (start, end), None
+    else:
+        cur, prev = meta.ranges(days, today_local())
+    total = [meta.clean(r) for r in api.insights(acc["akun"], *cur)]
+    before = [meta.clean(r) for r in api.insights(acc["akun"], *prev)] if prev else []
+    rows = [meta.clean(r) for r in api.insights(acc["akun"], *cur, level="campaign")]
+    places = [meta.clean(r) for r in api.insights(acc["akun"], *cur, breakdowns=["publisher_platform"])]
+    info = {c["id"]: c for c in api.campaigns(acc["akun"])}
+    for r in rows:
+        c = info.get(r.get("campaign_id"), {})
+        r.update(status=c.get("effective_status"), tujuan=c.get("objective"), budget=meta.budget(c, acc["mata_uang"]))
+    rows.sort(key=lambda r: -r["biaya"])
+    t = total[0] if total else meta.clean({})
+    b = before[0] if before else None
+    compare = None
+    if b:
+        compare = {"periode": prev, "biaya": meta.change(t["biaya"], b["biaya"]),
+                   "klik_link": meta.change(t["klik_link"], b["klik_link"]),
+                   **{f"hasil_{k}": meta.change(v, b["hasil"].get(k, 0)) for k, v in t["hasil"].items()}}
+    share = {p.get("publisher_platform"): (f"{p['biaya'] / t['biaya']:.0%}" if t["biaya"] else "0%") for p in places}
+    return {"akun": acc["akun"], "nama": acc["nama"], "mata_uang": acc["mata_uang"],
+            "periode": {"mulai": cur[0], "selesai": cur[1]}, "total": t, "dibanding_sebelumnya": compare,
+            "porsi_biaya_per_platform": share, "temuan": meta.findings(rows, places), "kampanye": rows}
+
+
+@tool
+def meta_insights(account: str | None = None, level: str = "campaign", breakdowns: list[str] | None = None,
+                  days: int = 30, start: str | None = None, end: str | None = None, daily: bool = False,
+                  limit: int = 100) -> dict:
+    """Rincian Meta Ads. level: account | campaign | adset | ad. breakdowns (opsional): age, gender,
+    publisher_platform, platform_position, device_platform, region, country. daily=true = per hari.
+    Contoh: umur & gender yang paling murah per WA → level=account, breakdowns=["age","gender"]."""
+    api = meta_api()
+    acc = _meta_account(account)
+    rng = (start, end) if (start and end) else meta.ranges(days, today_local())[0]
+    rows = [meta.clean(r) for r in api.insights(acc["akun"], *rng, level=level, breakdowns=breakdowns, daily=daily)]
+    if not daily:
+        rows.sort(key=lambda r: -r["biaya"])
+    return {"akun": acc["akun"], "nama": acc["nama"], "mata_uang": acc["mata_uang"],
+            "periode": {"mulai": rng[0], "selesai": rng[1]}, "jumlah_baris": len(rows), "baris": rows[:limit]}
 
 
 def main() -> None:

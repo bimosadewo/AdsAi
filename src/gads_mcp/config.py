@@ -79,6 +79,9 @@ class Settings:
     clients_file: Path = Path("clients.yaml")
     gbp_refresh_token: str = ""   # Google Business Profile (scope business.manage); opsional
     ga4_refresh_token: str = ""   # Google Analytics 4 (scope analytics.readonly); opsional
+    meta_access_token: str = ""   # Meta Ads: token System User (ads_read); opsional
+    meta_api_version: str = ""
+    meta_default_account: str = ""
 
     def to_google_ads_dict(self) -> dict:
         cfg = {
@@ -130,4 +133,7 @@ def load_settings() -> Settings:
         clients_file=Path(os.getenv("ADSAI_CLIENTS_FILE") or PROJECT_ROOT / "clients.yaml"),
         gbp_refresh_token=_cred("GBP_REFRESH_TOKEN"),
         ga4_refresh_token=_cred("GA4_REFRESH_TOKEN"),
+        meta_access_token=_cred("META_ACCESS_TOKEN"),
+        meta_api_version=_cred("META_API_VERSION"),
+        meta_default_account=_cred("META_DEFAULT_AD_ACCOUNT"),
     )
