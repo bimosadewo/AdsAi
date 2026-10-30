@@ -1679,8 +1679,11 @@ def meta_create_campaign_from_proven(name: str, ad_sets: list[dict], account: st
                 == name.strip().lower() and c.get("effective_status") != "DELETED"]
     if existing:
         raise meta.MetaError(f"Sudah ada kampanye bernama '{name}' (ID {existing[0]['id']}). Pakai nama lain.")
+    # Selalu validasi dulu (juga saat confirm): membersihkan minat usang & menangkap penolakan sebelum membuat apa pun.
+    checked = launcher.validate(plan)
+    notes += [n for n in plan["notes"] if n not in notes]
+    summary = launcher.summary(plan)
     if not confirm:
-        checked = launcher.validate(plan)
         return {"status": "PRATINJAU", "akun": acc["akun"], "nama_akun": acc["nama"], "aksi": "meta_create_campaign",
                 **summary, "lolos_validasi_meta": checked, "catatan": notes,
                 "pesan": "Belum dibuat. Setelah dibuat, kampanye DIJEDA — tidak ada biaya sampai diaktifkan."}

@@ -98,6 +98,51 @@ def targeting_for(source: dict, spec: dict) -> tuple[dict, list[str]]:
     return t, notes
 
 
+def interest_names(t: dict) -> list[str]:
+    """Nama minat/perilaku/jabatan di targeting (langsung maupun di flexible_spec)."""
+    groups = [t, *(t.get("flexible_spec") or [])]
+    keys = ("interests", "behaviors", "work_positions", "industries", "life_events", "family_statuses")
+    return [i.get("name") or str(i.get("id")) for g in groups for k in keys for i in (g.get(k) or [])]
+
+
+def deprecated_ids(error: Exception | str) -> list[str]:
+    """ID minat yang sudah dihapus Meta, dari pesan error subkode 1870247."""
+    return re.findall(r'deprecated_interest_id\\?"?\s*:\s*\\?"?(\d+)', str(error))
+
+
+def strip_interests(t: dict, ids: list[str]) -> tuple[dict, list[str]]:
+    """Buang minat yang sudah dihapus Meta (tanpa menggantinya — usulan pengganti Meta sering tidak nyambung)."""
+    drop = {str(i) for i in ids}
+    removed: list[str] = []
+
+    def keep(items: list[dict]) -> list[dict]:
+        out = []
+        for i in items or []:
+            (removed.append(i.get("name") or str(i.get("id"))) if str(i.get("id")) in drop else out.append(i))
+        return out
+
+    t = dict(t)
+    if "interests" in t:
+        t["interests"] = keep(t["interests"])
+        if not t["interests"]:
+            t.pop("interests")
+    if t.get("flexible_spec"):
+        spec = []
+        for g in t["flexible_spec"]:
+            g = dict(g)
+            if "interests" in g:
+                g["interests"] = keep(g["interests"])
+                if not g["interests"]:
+                    g.pop("interests")
+            if g:
+                spec.append(g)
+        if spec:
+            t["flexible_spec"] = spec
+        else:
+            t.pop("flexible_spec")
+    return t, removed
+
+
 def describe_targeting(t: dict) -> dict[str, Any]:
     geo = t.get("geo_locations") or {}
     places = [*(f"FB {p}" for p in t.get("facebook_positions", [])),
@@ -109,7 +154,8 @@ def describe_targeting(t: dict) -> dict[str, Any]:
             "lokasi": geo.get("countries") or [c.get("name") or c.get("key") for c in
                                               (geo.get("regions") or []) + (geo.get("cities") or [])],
             "penempatan": places or ("otomatis (Advantage+)" if not t.get("publisher_platforms")
-                                     else t.get("publisher_platforms"))}
+                                     else t.get("publisher_platforms")),
+            "minat": interest_names(t) or "tidak ada (luas)"}
 
 
 class Launcher:
@@ -199,6 +245,15 @@ class Launcher:
                                      for a in s["ads"]]} for s in p["sets"]],
         }
 
+    def drop_interests(self, p: dict, ids: list[str]) -> None:
+        names: list[str] = []
+        for st in p["sets"]:
+            st["fields"]["targeting"], removed = strip_interests(st["fields"]["targeting"], ids)
+            names += [n for n in removed if n not in names]
+        if names:
+            p["notes"].append(f"Minat yang sudah dihapus Meta dibuang dari targeting lama (tidak diganti): "
+                              f"{', '.join(names)}.")
+
     def validate(self, p: dict) -> list[str]:
         """validate_only di Meta: kampanye; set iklan & iklan diuji terhadap kampanye/set sumber (tujuan sama)."""
         checked = []
@@ -212,7 +267,18 @@ class Launcher:
                 # uji sisanya (targeting, umur, penempatan, WhatsApp) tanpa keduanya.
                 for k in ("daily_budget", "bid_strategy", "bid_amount"):
                     fields.pop(k, None)
-            self.api.create(self.act, "adsets", fields, validate_only=True)
+            for _ in range(5):
+                try:
+                    self.api.create(self.act, "adsets", fields, validate_only=True)
+                    break
+                except MetaError as ex:
+                    ids = deprecated_ids(ex)
+                    if not ids:
+                        raise
+                    self.drop_interests(p, ids)
+                    fields["targeting"] = s["fields"]["targeting"]
+            else:
+                raise MetaError("Targeting masih memuat minat yang sudah dihapus Meta setelah 5 kali dibersihkan.")
             checked.append(f"set '{s['fields']['name']}'" + (" (tanpa budget)" if cbo else ""))
             for a in s["ads"]:
                 self.api.create(self.act, "ads", {**a["fields"], "adset_id": p["source_set"]["id"]},

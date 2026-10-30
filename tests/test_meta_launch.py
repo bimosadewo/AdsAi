@@ -150,3 +150,43 @@ def test_attribution_not_copied():
     p = meta_launch.Launcher(FakeApi(), "123", "IDR").plan("X", SPEC)
     assert all("attribution_spec" not in s["fields"] for s in p["sets"])
     assert any("atribusi" in n for n in p["notes"])
+
+
+ERR = ('Meta menolak permintaan (kode 100): Please update the targeting spec to remove them or replace them with '
+       'alternative options. Relevant alternative options: [{"deprecated_interest_id":"6003058848156",'
+       '"deprecated_interest_name":"Kreator Official","alternative_interest_id":"6003475887071",'
+       '"alternative_interest_name":"Thrash metal"}] (subkode 1870247)')
+
+
+def test_strip_deprecated_interests():
+    assert meta_launch.deprecated_ids(ERR) == ["6003058848156"]
+    t = {"geo_locations": {"countries": ["ID"]},
+         "flexible_spec": [{"interests": [{"id": "6003058848156", "name": "Kreator Official"},
+                                          {"id": "1", "name": "Konstruksi"}]},
+                           {"interests": [{"id": "6003058848156", "name": "Kreator Official"}]}]}
+    out, removed = meta_launch.strip_interests(t, ["6003058848156"])
+    assert removed == ["Kreator Official", "Kreator Official"]
+    assert out["flexible_spec"] == [{"interests": [{"id": "1", "name": "Konstruksi"}]}]
+    assert meta_launch.describe_targeting(out)["minat"] == ["Konstruksi"]
+    assert "flexible_spec" not in meta_launch.strip_interests({"flexible_spec": t["flexible_spec"][1:]},
+                                                              ["6003058848156"])[0]
+
+
+def test_validate_retries_after_removing_deprecated_interest(monkeypatch):
+    targeting = {**SRC_SET["targeting"], "flexible_spec": [{"interests": [{"id": "6003058848156",
+                                                                          "name": "Kreator Official"}]}]}
+    monkeypatch.setitem(SRC_SET, "targeting", targeting)
+    api = FakeApi()
+    real = api.create
+
+    def create(act, edge, fields, validate_only=False):
+        if edge == "adsets" and "Kreator" in str(fields.get("targeting")):
+            raise MetaError(ERR)
+        return real(act, edge, fields, validate_only)
+
+    api.create = create
+    l = meta_launch.Launcher(api, "123", "IDR")
+    p = l.plan("X", SPEC)
+    checked = l.validate(p)
+    assert "set 'Geotextile'" in checked and all("flexible_spec" not in s["fields"]["targeting"] for s in p["sets"])
+    assert any("Kreator Official" in n and "tidak diganti" in n for n in p["notes"])
