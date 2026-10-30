@@ -6,8 +6,9 @@
 - penempatan: Facebook / Instagram / Audience Network
 - umur, gender, dan wilayah
 
-AdsAi belum bisa mengubah iklan Meta. Fitur jeda kampanye dan ubah budget menyusul setelah tahap baca berjalan
-lancar, dengan aturan yang sama seperti Google Ads: pratinjau dulu, lalu disetujui.
+**Tahap 2: membuat kampanye dari iklan yang sudah terbukti, serta mengaktifkan/menjeda.** Aturannya sama seperti
+Google Ads: pratinjau dulu (divalidasi Meta), baru dijalankan setelah disetujui. Kampanye baru **selalu dibuat dalam
+keadaan dijeda**. Tahap ini butuh izin tambahan, lihat bagian *Izin untuk membuat & mengubah iklan*.
 
 Koneksinya memakai **token System User** dari Business Manager:
 - tidak terikat ke akun Facebook pribadi
@@ -59,6 +60,16 @@ META_DEFAULT_AD_ACCOUNT=act_<ID akun iklan>   # opsional, bila punya lebih dari 
 
 Lalu di Claude ketik *"cek status Meta"*. Hasil yang diharapkan: status **SIAP** dan daftar akun iklan.
 
+## Izin untuk membuat & mengubah iklan (tahap 2)
+Token yang hanya punya `ads_read` bisa membaca, tapi ditolak saat membuat kampanye. Untuk menambah izin:
+1. Business Manager → **Pengguna sistem → AdsAi → Tetapkan aset**. Ubah izin akun iklan menjadi **Kelola kampanye**
+   (Manage campaigns).
+2. Klik **Buat token baru**, centang **ads_read** dan **ads_management**, masa berlaku *Tidak pernah*.
+3. Ganti nilai token lama:
+   - Laptop: ganti `META_ACCESS_TOKEN` di `.env`.
+   - Server online: Secret Manager → `adsai-meta-token` → **+ New version**, lalu Cloud Run → **Edit & deploy new
+     revision** → **Deploy**.
+
 ## Akun iklan klien
 - Klien menambahkan Business Manager Bapak sebagai **partner** di akun iklannya. Ini dilakukan di Business Manager
   klien → Akun iklan → Tetapkan partner.
@@ -73,6 +84,9 @@ Lalu di Claude ketik *"cek status Meta"*. Hasil yang diharapkan: status **SIAP**
 | `meta_status` | Koneksi + daftar akun iklan dan statusnya (aktif / tunggakan / ditinjau) |
 | `meta_performance` | Ringkasan: biaya, jangkauan, frekuensi, hasil WA/prospek, biaya per hasil, perbandingan periode, per kampanye, porsi biaya per platform, temuan |
 | `meta_insights` | Rincian: per kampanye/ad set/iklan, per umur/gender/penempatan/wilayah, per hari |
+| `meta_ads` | Daftar iklan + teks + biaya per hasil (termasuk iklan lama yang diarsip) untuk mencari yang terbukti |
+| `meta_create_campaign_from_proven` | Kampanye baru dari iklan terbukti. Materi dipakai ulang (postingan lama: like & komentar ikut), pengaturan WhatsApp disalin dari set iklan lama. Budget per set iklan, atur umur/gender/penempatan. **Selalu dijeda** |
+| `meta_set_status` | Aktifkan/jeda kampanye, set iklan, atau iklan |
 
 Contoh perintah:
 - *"Tampilkan performa iklan Meta 30 hari terakhir."*

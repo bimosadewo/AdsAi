@@ -103,3 +103,22 @@ def test_server_performance(monkeypatch, tmp_path):
     detail = server.meta_insights(breakdowns=["age"], level="account")
     assert detail["jumlah_baris"] == 1
     assert server.meta_status()["status"] == "SIAP"
+
+
+def test_post_encodes_nested_and_validate_only():
+    sent = []
+
+    class S:
+        def request(self, method, url, timeout=None, **kw):
+            sent.append((method, url, kw))
+            return Resp(200, {"id": "9"})
+
+    api = meta.Meta(S(), "TOK")
+    api.create("123", "adsets", {"name": "x", "targeting": {"age_min": 25}, "bid_amount": None},
+               validate_only=True)
+    method, url, kw = sent[-1]
+    assert method == "POST" and url.endswith("/v26.0/act_123/adsets")
+    assert kw["data"]["targeting"] == '{"age_min": 25}' and kw["data"]["execution_options"] == '["validate_only"]'
+    assert "bid_amount" not in kw["data"] and kw["data"]["access_token"] == "TOK"
+    api.delete("77")
+    assert sent[-1][0] == "DELETE" and sent[-1][1].endswith("/77")

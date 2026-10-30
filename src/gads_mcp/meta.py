@@ -32,6 +32,8 @@ RESULTS = {
 }
 ACCOUNT_STATUS = {1: "AKTIF", 2: "NONAKTIF", 3: "TUNGGAKAN", 7: "DITINJAU (RISIKO)", 8: "MENUNGGU PELUNASAN",
                   9: "MASA TENGGANG", 100: "MENUNGGU DITUTUP", 101: "DITUTUP"}
+AD_FIELDS = ("id,name,effective_status,adset_id,campaign_id,adset{name},campaign{name},"
+             "creative{id,name,body,title,object_story_id,effective_object_story_id,thumbnail_url}")
 BREAKDOWNS = ("age", "gender", "publisher_platform", "platform_position", "device_platform", "region", "country")
 
 
@@ -52,8 +54,9 @@ def explain(status: int, body: Any) -> str:
         hint = ("Token tidak valid/kedaluwarsa/dicabut. Buat ulang token System User di Business Manager dan "
                 "perbarui META_ACCESS_TOKEN.")
     elif code in (10, 200, 294) or (code and 200 <= int(code) <= 299):
-        hint = ("Izin kurang: token perlu ads_read, dan akun iklan harus ditugaskan ke System User "
-                "(Business Manager → Pengguna → Pengguna sistem → Tetapkan aset).")
+        hint = ("Izin kurang: token perlu ads_read (baca) atau ads_management (membuat/mengubah iklan), dan akun "
+                "iklan harus ditugaskan ke System User dengan izin yang sesuai (Lihat performa / Kelola kampanye) — "
+                "Business Manager → Pengguna → Pengguna sistem → Tetapkan aset. Lihat docs/META-ADS.md.")
     elif code in (4, 17, 32, 613, 80000, 80004):
         hint = "Batas panggilan Meta tercapai. Tunggu beberapa menit atau persempit rentang tanggal."
     elif code == 100:
@@ -90,8 +93,16 @@ class Meta:
         url = path_or_url if path_or_url.startswith("https://") else f"{GRAPH}/{self.version}/{path_or_url}"
         # paging.next sudah memuat token & parameter; selain itu token dikirim sebagai parameter.
         query = None if path_or_url.startswith("https://") else {**(params or {}), "access_token": self.token}
+        return self._send("GET", url, params=query)
+
+    def _post(self, path: str, fields: dict[str, Any], method: str = "POST") -> dict[str, Any]:
+        """Tulis ke Meta. Nilai bertingkat (targeting, promoted_object, ...) dikirim sebagai JSON string."""
+        form = {k: (json.dumps(v) if isinstance(v, (dict, list)) else v) for k, v in fields.items() if v is not None}
+        return self._send(method, f"{GRAPH}/{self.version}/{path}", data={**form, "access_token": self.token})
+
+    def _send(self, method: str, url: str, **kw: Any) -> dict[str, Any]:
         try:
-            resp = self.session.request("GET", url, params=query, timeout=60)
+            resp = self.session.request(method, url, timeout=60, **kw)
         except Exception as ex:  # noqa: BLE001
             raise MetaError(f"Tidak bisa menghubungi Meta: {type(ex).__name__}") from ex
         try:
@@ -139,6 +150,33 @@ class Meta:
         if daily:
             params["time_increment"] = 1
         return self._all(f"{account_id(act)}/insights", params)
+
+
+    def get(self, object_id: str, fields: str) -> dict[str, Any]:
+        return self._get(str(object_id), {"fields": fields})
+
+    def ads(self, act: str, campaign_id: str | None = None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"fields": AD_FIELDS, "limit": 200}
+        # Default Meta menyembunyikan iklan yang diarsipkan — padahal iklan lama yang terbukti sering diarsip.
+        filters = [{"field": "effective_status", "operator": "IN",
+                    "value": ["ACTIVE", "PAUSED", "ARCHIVED", "CAMPAIGN_PAUSED", "ADSET_PAUSED", "IN_PROCESS",
+                              "WITH_ISSUES", "DISAPPROVED", "PENDING_REVIEW"]}]
+        if campaign_id:
+            filters.append({"field": "campaign.id", "operator": "EQUAL", "value": str(campaign_id)})
+        params["filtering"] = json.dumps(filters)
+        return self._all(f"{account_id(act)}/ads", params, limit=500)
+
+    def create(self, act: str, edge: str, fields: dict[str, Any], validate_only: bool = False) -> dict[str, Any]:
+        """edge: campaigns | adsets | ads. validate_only=True → Meta memeriksa tanpa membuat apa pun."""
+        if validate_only:
+            fields = {**fields, "execution_options": ["validate_only"]}
+        return self._post(f"{account_id(act)}/{edge}", fields)
+
+    def update(self, object_id: str, fields: dict[str, Any]) -> dict[str, Any]:
+        return self._post(str(object_id), fields)
+
+    def delete(self, object_id: str) -> dict[str, Any]:
+        return self._post(str(object_id), {}, method="DELETE")
 
 
 # --- olah data ---------------------------------------------------------------------------------------------

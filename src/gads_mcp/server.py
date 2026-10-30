@@ -11,7 +11,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, ga4, gaql, gbp, goals, geo, meta, keyword_research, monitors, proposals, rsa, strategy,
+from . import (analysis, campaigns, dashboard, diagnostics, remote_auth, dossier, errors, extensions, ga4, gaql, gbp, goals, geo, meta, meta_launch, keyword_research, monitors, proposals, rsa, strategy,
                structure, targeting)
 from .client import Ads, AdsError
 from .clients import find_client, load_clients
@@ -44,8 +44,10 @@ Server ini membaca dan mengelola akun Google Ads klien agensi (uang sungguhan).
   (gbp_post, gbp_reply_review, gbp_special_hours) juga pratinjau dulu. Draf balasan ulasan ditulis Claude.
 - Website/Google Analytics 4 (baca saja): ga4_overview (pengunjung, saluran, halaman masuk, klik WA);
   ga4_report untuk pertanyaan lain. Bandingkan key event GA4 dengan konversi Google Ads bila relevan.
-- Meta Ads / Facebook / Instagram (baca saja): meta_status → meta_performance (kampanye, hasil WA/prospek,
-  penempatan); meta_insights untuk rincian (umur, gender, penempatan, wilayah, harian).
+- Meta Ads / Facebook / Instagram: meta_status → meta_performance (kampanye, hasil WA/prospek, penempatan);
+  meta_insights untuk rincian; meta_ads untuk iklan + teks + biaya per hasil (cari iklan terbukti).
+  "Beriklan lagi pakai yang terbukti" → meta_create_campaign_from_proven (pratinjau, selalu DIJEDA), lalu
+  meta_set_status ACTIVE hanya setelah pengguna setuju.
 - Saat pengguna tidak di tempat (mis. tugas terjadwal), JANGAN mengubah akun: masukkan usulan lewat
   propose_change. Pengguna memutuskan dengan list_proposals → decide_proposal (setujui/tolak, confirm=true).
 """
@@ -1621,6 +1623,110 @@ def meta_insights(account: str | None = None, level: str = "campaign", breakdown
         rows.sort(key=lambda r: -r["biaya"])
     return {"akun": acc["akun"], "nama": acc["nama"], "mata_uang": acc["mata_uang"],
             "periode": {"mulai": rng[0], "selesai": rng[1]}, "jumlah_baris": len(rows), "baris": rows[:limit]}
+
+
+@tool
+def meta_ads(account: str | None = None, campaign_id: str | None = None, start: str | None = None,
+             end: str | None = None, days: int = 30, limit: int = 50) -> dict:
+    """Daftar iklan Meta beserta TEKS iklannya, set/kampanye induk, status, dan performa (biaya, hasil WA/prospek,
+    biaya per hasil) — untuk mencari iklan yang SUDAH TERBUKTI. Untuk iklan lama isi start/end (YYYY-MM-DD),
+    mis. start=2025-05-01 end=2025-05-31. campaign_id: batasi ke satu kampanye."""
+    api = meta_api()
+    acc = _meta_account(account)
+    rng = (start, end) if (start and end) else meta.ranges(days, today_local())[0]
+    perf = {r.get("ad_id"): meta.clean(r) for r in api.insights(acc["akun"], *rng, level="ad")}
+    out = []
+    for ad in api.ads(acc["akun"], campaign_id):
+        p = perf.get(ad["id"])
+        if campaign_id is None and p is None:
+            continue   # tanpa filter kampanye: tampilkan hanya iklan yang tayang di periode ini
+        cr = ad.get("creative") or {}
+        out.append({"iklan": ad["id"], "nama": ad.get("name"), "status": ad.get("effective_status"),
+                    "set_iklan": (ad.get("adset") or {}).get("name"), "set_iklan_id": ad.get("adset_id"),
+                    "kampanye": (ad.get("campaign") or {}).get("name"), "kampanye_id": ad.get("campaign_id"),
+                    "teks": (cr.get("body") or "")[:300], "judul": cr.get("title"),
+                    "postingan": cr.get("effective_object_story_id") or cr.get("object_story_id"),
+                    "biaya": (p or {}).get("biaya", 0), "hasil": (p or {}).get("hasil", {}),
+                    "biaya_per_hasil": (p or {}).get("biaya_per_hasil", {})})
+    out.sort(key=lambda r: -r["biaya"])
+    return {"akun": acc["akun"], "nama": acc["nama"], "mata_uang": acc["mata_uang"],
+            "periode": {"mulai": rng[0], "selesai": rng[1]}, "jumlah": len(out), "iklan": out[:limit]}
+
+
+@write_tool
+def meta_create_campaign_from_proven(name: str, ad_sets: list[dict], account: str | None = None,
+                                     source_adset: str | None = None, confirm: bool = False) -> dict:
+    """Buat kampanye Meta BARU dari iklan yang sudah terbukti, selalu DIJEDA (tidak membelanjakan uang sampai
+    diaktifkan dengan meta_set_status). Materi iklan dipakai ulang apa adanya (postingan lama: like & komentar
+    ikut); pengaturan tujuan/WhatsApp/halaman disalin dari set iklan sumber (default: set iklan dari iklan pertama).
+    ad_sets: [{"name", "daily_budget" (mata uang akun, mis. 70000), "ads": [ID iklan sumber dari meta_ads],
+    "age_min"?, "age_max"?, "gender"? (pria|wanita|semua), "placements"? (feed_reels|feed|otomatis)}].
+    Kampanye memakai budget per set iklan (ABO). Pratinjau divalidasi Meta (validate_only)."""
+    from .safety import SafetyError, check_budget, ensure_writable
+    a = ads()
+    acc = _meta_account(account)
+    launcher = meta_launch.Launcher(meta_api(), acc["akun"], acc["mata_uang"] or "IDR")
+    plan = launcher.plan(name, ad_sets, source_adset)
+    notes = list(plan["notes"])
+    for s in ad_sets:
+        notes += check_budget(a.settings.safety, None, float(s["daily_budget"]))
+    total = sum(float(s["daily_budget"]) for s in ad_sets)
+    if a.settings.safety.max_daily_budget is not None and total > a.settings.safety.max_daily_budget:
+        raise SafetyError(f"Total budget harian {total:,.0f} melebihi ADSAI_MAX_DAILY_BUDGET "
+                          f"({a.settings.safety.max_daily_budget:,.0f}).")
+    summary = launcher.summary(plan)
+    existing = [c for c in meta_api().campaigns(acc["akun"]) if (c.get("name") or "").strip().lower()
+                == name.strip().lower() and c.get("effective_status") != "DELETED"]
+    if existing:
+        raise meta.MetaError(f"Sudah ada kampanye bernama '{name}' (ID {existing[0]['id']}). Pakai nama lain.")
+    if not confirm:
+        checked = launcher.validate(plan)
+        return {"status": "PRATINJAU", "akun": acc["akun"], "nama_akun": acc["nama"], "aksi": "meta_create_campaign",
+                **summary, "lolos_validasi_meta": checked, "catatan": notes,
+                "pesan": "Belum dibuat. Setelah dibuat, kampanye DIJEDA — tidak ada biaya sampai diaktifkan."}
+    ensure_writable(a.settings.safety)
+    created = launcher.execute(plan)
+    verified = launcher.verify(created["kampanye"])
+    AuditLog(a.settings.safety.audit_log_dir).write(
+        f"meta-{acc['akun']}", "meta_create_campaign", {"kampanye": created["kampanye"]}, None,
+        {"nama": name, "set_iklan": created["set_iklan"], "total_harian": total}, "OK")
+    return {"status": "DIJALANKAN", "akun": acc["akun"], **summary, "dibuat": created, "terverifikasi": verified,
+            "catatan": notes + ["Kampanye DIJEDA. Aktifkan dengan meta_set_status level=campaign status=ACTIVE "
+                                "setelah dicek (metode pembayaran, teks iklan)."]}
+
+
+@write_tool
+def meta_set_status(level: str, ids: list[str], status: str, account: str | None = None,
+                    confirm: bool = False) -> dict:
+    """Aktifkan/jeda kampanye, set iklan, atau iklan Meta. level: campaign | adset | ad. status: ACTIVE | PAUSED.
+    Mengaktifkan kampanye baru juga butuh set iklan & iklannya ACTIVE (dibuat AdsAi dalam keadaan dijeda)."""
+    from .safety import ensure_writable
+    level, status = level.lower(), status.upper()
+    if level not in ("campaign", "adset", "ad") or status not in ("ACTIVE", "PAUSED"):
+        raise meta.MetaError("level: campaign | adset | ad; status: ACTIVE | PAUSED.")
+    if not ids:
+        raise meta.MetaError("Isi minimal satu ID.")
+    a = ads()
+    acc = _meta_account(account)
+    api = meta_api()
+    targets = [api.get(i, "name,status,effective_status,account_id") for i in ids]
+    wrong = [t["id"] for t in targets if t.get("account_id") and f"act_{t['account_id']}" != acc["akun"]]
+    if wrong:
+        raise meta.MetaError(f"ID {', '.join(wrong)} bukan milik akun {acc['nama']} ({acc['akun']}).")
+    before = [{"id": t["id"], "nama": t.get("name"), "status": t.get("effective_status")} for t in targets]
+    plan = {"aksi": "meta_set_status", "akun": acc["akun"], "level": level, "status_baru": status, "sebelum": before}
+    if status == "ACTIVE":
+        plan["catatan"] = ["Setelah aktif, iklan mulai tayang dan membelanjakan uang (setelah lolos tinjauan Meta)."]
+    if not confirm:
+        return {"status": "PRATINJAU", **plan, "pesan": "Belum diubah."}
+    ensure_writable(a.settings.safety)
+    for t in targets:
+        api.update(t["id"], {"status": status})
+    after = [{"id": t["id"], "nama": t.get("name"), "status": api.get(t["id"], "effective_status")
+              .get("effective_status")} for t in targets]
+    AuditLog(a.settings.safety.audit_log_dir).write(f"meta-{acc['akun']}", "meta_set_status",
+                                                    {"level": level, "ids": ids}, before, after, "OK")
+    return {"status": "DIJALANKAN", **plan, "terverifikasi": after}
 
 
 def main() -> None:
