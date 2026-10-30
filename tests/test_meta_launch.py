@@ -3,7 +3,7 @@ import pytest
 from gads_mcp import meta_launch
 from gads_mcp.meta import MetaError
 
-SRC_SET = {"id": "S1", "name": "GTNW Mei", "campaign_id": "C0", "optimization_goal": "CONVERSATIONS",
+SRC_SET = {"id": "S1", "attribution_spec": [{"event_type": "CLICK_THROUGH", "window_days": 7}], "name": "GTNW Mei", "campaign_id": "C0", "optimization_goal": "CONVERSATIONS",
            "billing_event": "IMPRESSIONS", "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
            "promoted_object": {"page_id": "PG", "whatsapp_phone_number": "6281"}, "destination_type": "WHATSAPP",
            "targeting": {"geo_locations": {"countries": ["ID"]}, "age_min": 18, "age_max": 65,
@@ -144,3 +144,9 @@ def test_validate_adsets_even_when_source_is_cbo(monkeypatch):
     sets = [f for e, f in api.validated if e == "adsets"]
     assert len(sets) == 2 and all("daily_budget" not in f and "bid_strategy" not in f for f in sets)
     assert "set 'Geotextile' (tanpa budget)" in checked
+
+
+def test_attribution_not_copied():
+    p = meta_launch.Launcher(FakeApi(), "123", "IDR").plan("X", SPEC)
+    assert all("attribution_spec" not in s["fields"] for s in p["sets"])
+    assert any("atribusi" in n for n in p["notes"])

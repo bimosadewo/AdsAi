@@ -152,7 +152,6 @@ class Launcher:
                       "bid_strategy": src_set.get("bid_strategy") or "LOWEST_COST_WITHOUT_CAP",
                       "promoted_object": src_set.get("promoted_object"),
                       "destination_type": src_set.get("destination_type"),
-                      "attribution_spec": src_set.get("attribution_spec"),
                       "targeting": targeting}
             if src_set.get("bid_amount") and fields["bid_strategy"] != "LOWEST_COST_WITHOUT_CAP":
                 fields["bid_amount"] = src_set["bid_amount"]
@@ -169,6 +168,10 @@ class Launcher:
                             "postingan_lama": bool(cr.get("effective_object_story_id") or cr.get("object_story_id")),
                             "cek": claims(text)})
             sets.append({"fields": fields, "ads": ads})
+        if src_set.get("attribution_spec"):
+            # Jendela atribusi lama sering tidak lagi didukung untuk tujuan/goal yang sama (subkode 1885423).
+            notes.append("Jendela atribusi tidak disalin dari set lama; Meta memakai bawaan untuk tujuan ini "
+                         "(mis. 1 hari setelah klik), jadi angka hasil bisa sedikit berbeda dibanding Mei 2025.")
         if src_camp.get("daily_budget") or src_camp.get("lifetime_budget"):
             notes.append("Kampanye sumber memakai budget kampanye (CBO); kampanye baru memakai budget per set iklan "
                          "(ABO) sesuai rencana.")
