@@ -50,7 +50,12 @@ def explain(status: int, body: Any) -> str:
     code, sub = err.get("code"), err.get("error_subcode")
     msg = err.get("error_user_msg") or err.get("message") or (body if isinstance(body, str) else f"HTTP {status}")
     text = f"Meta menolak permintaan (kode {code or status}): {msg}"
-    if code == 190:
+    if "permission on the Page" in str(msg) or sub == 1885499:
+        hint = ("System User belum punya akses ke Halaman Facebook (dan akun Instagram) yang dipakai iklan. Business "
+                "Manager → Pengguna sistem → AdsAi → Tetapkan aset → Halaman → pilih halaman bisnis → izin "
+                "'Buat iklan' (Advertise/Create ads); lakukan juga untuk Akun Instagram bila ada. Lalu coba lagi — "
+                "token tidak perlu dibuat ulang.")
+    elif code == 190:
         hint = ("Token tidak valid/kedaluwarsa/dicabut. Buat ulang token System User di Business Manager dan "
                 "perbarui META_ACCESS_TOKEN.")
     elif code in (10, 200, 294) or (code and 200 <= int(code) <= 299):

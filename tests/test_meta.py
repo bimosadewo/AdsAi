@@ -122,3 +122,9 @@ def test_post_encodes_nested_and_validate_only():
     assert "bid_amount" not in kw["data"] and kw["data"]["access_token"] == "TOK"
     api.delete("77")
     assert sent[-1][0] == "DELETE" and sent[-1][1].endswith("/77")
+
+
+def test_page_permission_hint():
+    text = meta.explain(400, {"error": {"code": 100, "error_subcode": 1885499,
+                                        "message": "The viewer must have advertiser permission on the Page to create an ad."}})
+    assert "Halaman Facebook" in text and "ID akun" not in text
