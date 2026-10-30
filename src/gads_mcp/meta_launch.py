@@ -86,8 +86,15 @@ def targeting_for(source: dict, spec: dict) -> tuple[dict, list[str]]:
         else:
             raise MetaError("placements: feed_reels | feed | otomatis.")
     if (t.get("targeting_automation") or {}).get("advantage_audience") == 1:
-        notes.append("Set iklan sumber memakai Advantage+ audience: umur/gender dianggap saran, Meta boleh "
-                     "menjangkau di luar itu.")
+        # Advantage+ audience: Meta menolak age_max < 65 dan age_min > 25 sebagai batas keras (subkode 1359201).
+        # Rentang yang diminta dikirim sebagai SARAN (age_range); batas kerasnya min(umur, 25)–65.
+        want_min, want_max = t.get("age_min", 18), t.get("age_max", 65)
+        if (want_min, want_max) != (18, 65):
+            t["age_range"] = [want_min, want_max]
+        t["age_min"], t["age_max"] = min(want_min, 25), 65
+        notes.append(f"Set iklan sumber memakai Advantage+ audience: umur {want_min}–{want_max} dan gender dikirim "
+                     "sebagai saran ke Meta, batas kerasnya umur "
+                     f"{t['age_min']}–65; Meta boleh menjangkau di luar saran bila lebih efektif.")
     return t, notes
 
 
@@ -95,7 +102,9 @@ def describe_targeting(t: dict) -> dict[str, Any]:
     geo = t.get("geo_locations") or {}
     places = [*(f"FB {p}" for p in t.get("facebook_positions", [])),
               *(f"IG {p}" for p in t.get("instagram_positions", []))]
-    return {"umur": f"{t.get('age_min', 18)}–{t.get('age_max', 65)}",
+    rng = t.get("age_range")
+    return {"umur": (f"{rng[0]}–{rng[1]} (saran; batas {t.get('age_min', 18)}–{t.get('age_max', 65)})" if rng
+                     else f"{t.get('age_min', 18)}–{t.get('age_max', 65)}"),
             "gender": {(1,): "pria", (2,): "wanita"}.get(tuple(t.get("genders") or []), "semua"),
             "lokasi": geo.get("countries") or [c.get("name") or c.get("key") for c in
                                               (geo.get("regions") or []) + (geo.get("cities") or [])],
@@ -194,10 +203,14 @@ class Launcher:
         checked.append("kampanye")
         cbo = p["source_campaign"].get("daily_budget") or p["source_campaign"].get("lifetime_budget")
         for s in p["sets"]:
-            if not cbo:
-                self.api.create(self.act, "adsets", {**s["fields"], "campaign_id": p["source_set"]["campaign_id"]},
-                                validate_only=True)
-                checked.append(f"set '{s['fields']['name']}'")
+            fields = {**s["fields"], "campaign_id": p["source_set"]["campaign_id"]}
+            if cbo:
+                # Kampanye sumber ber-budget kampanye: budget & strategi bid set iklan tidak boleh ada di sana, jadi
+                # uji sisanya (targeting, umur, penempatan, WhatsApp) tanpa keduanya.
+                for k in ("daily_budget", "bid_strategy", "bid_amount"):
+                    fields.pop(k, None)
+            self.api.create(self.act, "adsets", fields, validate_only=True)
+            checked.append(f"set '{s['fields']['name']}'" + (" (tanpa budget)" if cbo else ""))
             for a in s["ads"]:
                 self.api.create(self.act, "ads", {**a["fields"], "adset_id": p["source_set"]["id"]},
                                 validate_only=True)

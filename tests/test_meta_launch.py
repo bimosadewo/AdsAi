@@ -123,3 +123,24 @@ def test_server_preview_and_readonly(monkeypatch, tmp_path):
     done = server.meta_create_campaign_from_proven("WA_Geosintetik_Nov26", SPEC, confirm=True)
     assert done["status"] == "DIJALANKAN" and done["terverifikasi"]["status"] == "PAUSED"
     assert (tmp_path / "meta-act_123.jsonl").exists()
+
+
+def test_advantage_audience_age_as_suggestion():
+    src = {**SRC_SET["targeting"], "targeting_automation": {"advantage_audience": 1}}
+    t, notes = meta_launch.targeting_for(src, {"age_min": 25, "age_max": 64, "gender": "pria"})
+    assert (t["age_min"], t["age_max"], t["age_range"]) == (25, 65, [25, 64]) and "saran" in notes[0]
+    t, _ = meta_launch.targeting_for(src, {"age_min": 30, "age_max": 50})
+    assert (t["age_min"], t["age_max"], t["age_range"]) == (25, 65, [30, 50])
+    assert "saran" in meta_launch.describe_targeting(t)["umur"]
+    t, _ = meta_launch.targeting_for(SRC_SET["targeting"], {"age_min": 25, "age_max": 64})
+    assert (t["age_min"], t["age_max"]) == (25, 64) and "age_range" not in t
+
+
+def test_validate_adsets_even_when_source_is_cbo(monkeypatch):
+    api = FakeApi()
+    monkeypatch.setitem(SRC_CAMP, "daily_budget", "100000")
+    l = meta_launch.Launcher(api, "123", "IDR")
+    checked = l.validate(l.plan("X", SPEC))
+    sets = [f for e, f in api.validated if e == "adsets"]
+    assert len(sets) == 2 and all("daily_budget" not in f and "bid_strategy" not in f for f in sets)
+    assert "set 'Geotextile' (tanpa budget)" in checked
