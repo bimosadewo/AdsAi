@@ -966,6 +966,16 @@ def remove_keywords(ids: list[str], customer_id: str | None = None, confirm: boo
     return mutator().remove_keywords(a.customer_id(customer_id), ids, confirm, confirm_delete)
 
 
+
+@write_tool
+def remove_campaign(campaign_id: str, customer_id: str | None = None, confirm: bool = False,
+                    confirm_delete: bool = False) -> dict:
+    """HAPUS PERMANEN satu kampanye (tidak bisa diaktifkan lagi; datanya tetap ada di laporan). Bila maksud
+    pengguna 'hentikan/jeda', pakai set_status PAUSED — jangan tool ini. Eksekusi butuh confirm=true DAN
+    confirm_delete=true."""
+    a = ads()
+    return mutator().remove_campaign(a.customer_id(customer_id), campaign_id, confirm, confirm_delete)
+
 # ---------------------------------------------------------------------------
 # Diagnosis (hanya baca)
 # ---------------------------------------------------------------------------

@@ -185,3 +185,17 @@ def test_conversion_notes_for_google_hosted(tmp_path):
     _, m, _ = make(tmp_path, lambda cid, q: row)
     res = m.update_conversion_action(CID, "7355168854", confirm=False, primary_for_goal=False)
     assert "Mutates are not allowed" in res["catatan"][0]
+
+
+def test_remove_campaign_needs_confirm_delete(tmp_path):
+    row = [{"campaign.id": "22889970452", "campaign.name": "Rental Genset Jabodetabek - Search",
+            "campaign.status": "PAUSED"}]
+    ads, m, _ = make(tmp_path, lambda cid, q: row)
+    m.remove_campaign(CID, "22889970452", confirm=False)
+    op = ads.calls[-1][1]["operations"][0]
+    assert op.remove.endswith("/campaigns/22889970452")
+    with pytest.raises(SafetyError):
+        m.remove_campaign(CID, "22889970452", confirm=True)
+    ads2, m2, _ = make(tmp_path, lambda cid, q: [])
+    with pytest.raises(ValueError, match="tidak ditemukan"):
+        m2.remove_campaign(CID, "1", confirm=False)

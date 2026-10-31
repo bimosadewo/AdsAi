@@ -583,6 +583,31 @@ class Mutator:
             verify=lambda: {"masih_ada": [f"{a}~{c}" for (a, c) in self._keyword_rows(cid, pairs)]},
         )
 
+    def remove_campaign(self, cid: str, campaign_id: str, confirm: bool, confirm_delete: bool = False) -> dict:
+        """Hapus permanen kampanye. Statistiknya tetap ada di laporan, tapi kampanye tidak bisa diaktifkan lagi."""
+        camp = _digits(campaign_id, "campaign_id")
+        q = ("SELECT campaign.id, campaign.name, campaign.status, campaign.advertising_channel_type "
+             f"FROM campaign WHERE campaign.id = {camp}")
+        rows = self.ads.search(cid, q)
+        if not rows or str(rows[0].get("campaign.status")) == "REMOVED":
+            raise ValueError(f"Kampanye {camp} tidak ditemukan atau sudah dihapus. Lihat list_campaigns.")
+        before = rows[0]
+        if confirm and not confirm_delete:
+            raise SafetyError("Menghapus kampanye bersifat PERMANEN (tidak bisa diaktifkan lagi; data lama tetap di "
+                              "laporan). Bila maksudnya berhenti sementara, pakai set_status PAUSED. Untuk tetap "
+                              "menghapus, kirim confirm=true DAN confirm_delete=true.")
+        notes = ["Penghapusan permanen. Alternatif yang bisa dibatalkan: set_status level campaign PAUSED."]
+        if str(before.get("campaign.status")) == "ENABLED":
+            notes.append("Kampanye ini sedang AKTIF — iklannya langsung berhenti tayang.")
+        op = self.gc.get_type("CampaignOperation")
+        op.remove = self.gc.get_service("CampaignService").campaign_path(cid, camp)
+        return self._finish(
+            cid=cid, action="remove_campaign", target={"campaign_id": camp, "nama": before.get("campaign.name")},
+            before=before, after="DIHAPUS", service="CampaignService", method="mutate_campaigns",
+            operations=[op], confirm=confirm, notes=notes,
+            verify=lambda: (self.ads.search(cid, q) or [{}])[0],
+        )
+
     # ---------- shared negative keyword list ----------
 
     def list_items(self, cid: str, shared_set_id: str) -> list[dict[str, Any]]:
