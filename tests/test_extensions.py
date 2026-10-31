@@ -191,3 +191,21 @@ def test_server_tools_validate_and_detect_type(tmp_path, monkeypatch):
     assert res["sesudah"]["ditambahkan"][0]["phone"] == "02155501234"
     listed = server.list_extensions(CAMP)
     assert listed["jumlah_aktif"] == {"SITELINK": 1, "CALLOUT": 2, "STRUCTURED_SNIPPET": 0, "CALL": 1}
+
+
+def test_list_queries_select_campaign_id_used_in_where():
+    from gads_mcp import extensions
+    seen = []
+
+    class Ads:
+        def search(self, cid, q):
+            seen.append(q)
+            return []
+
+    class M:
+        ads = Ads()
+
+    extensions.Extensions(M()).list("1", "24416198777")
+    assert len(seen) == 2
+    for q in seen:
+        assert "WHERE campaign.id" in q and q.split("FROM")[0].count("campaign.id") >= 1

@@ -169,11 +169,13 @@ class Extensions:
                   "asset.call_asset.country_code")
         types = "('SITELINK', 'CALLOUT', 'STRUCTURED_SNIPPET', 'CALL')"
         rows = [dict(r, level="campaign") for r in self.m.ads.search(cid, (
-            f"SELECT campaign_asset.field_type, campaign_asset.status, {fields} FROM campaign_asset "
+            # campaign.id wajib ikut di SELECT bila dipakai di WHERE (EXPECTED_REFERENCED_FIELD_IN_SELECT_CLAUSE, v25).
+            f"SELECT campaign.id, campaign_asset.field_type, campaign_asset.status, {fields} FROM campaign_asset "
             f"WHERE campaign.id = {camp} AND campaign_asset.status != 'REMOVED' "
             f"AND campaign_asset.field_type IN {types}"))]
         rows += [dict(r, level="ad_group") for r in self.m.ads.search(cid, (
-            f"SELECT ad_group.id, ad_group.name, ad_group_asset.field_type, ad_group_asset.status, {fields} "
+            f"SELECT campaign.id, ad_group.id, ad_group.name, ad_group_asset.field_type, ad_group_asset.status, "
+            f"{fields} "
             f"FROM ad_group_asset WHERE campaign.id = {camp} AND ad_group_asset.status != 'REMOVED' "
             f"AND ad_group_asset.field_type IN {types}"))]
         out = []
