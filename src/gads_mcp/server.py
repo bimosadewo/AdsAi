@@ -378,6 +378,18 @@ def update_conversion_action(conversion_action_id: str, customer_id: str | None 
 
 
 @write_tool
+def create_conversion_action(name: str, customer_id: str | None = None, category: str = "CONTACT",
+                             primary_for_goal: bool = True, counting_type: str = "ONE_PER_CLICK",
+                             value: float | None = None, click_through_days: int = 30,
+                             confirm: bool = False) -> dict:
+    """Buat konversi halaman web baru (tag Google), mis. 'Klik WhatsApp' (category CONTACT) atau form kontak
+    (SUBMIT_LEAD_FORM). Setelah dibuat, hasil 'terverifikasi.pasang_di_situs' berisi kode siap tempel: tag global
+    + pemicu otomatis saat link wa.me/WhatsApp diklik, dan cara memasangnya di WordPress."""
+    a = ads()
+    return mutator().create_conversion_action(a.customer_id(customer_id), name, confirm, category,
+                                              primary_for_goal, counting_type, value, click_through_days)
+
+@write_tool
 def update_bid_strategy(campaign_id: str, strategy: str, customer_id: str | None = None, confirm: bool = False,
                         target_cpa: float | None = None, max_cpc: float | None = None) -> dict:
     """Ganti strategi bidding: MAXIMIZE_CONVERSIONS (opsional target_cpa), MAXIMIZE_CLICKS (opsional max_cpc),

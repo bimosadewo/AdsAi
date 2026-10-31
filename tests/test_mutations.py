@@ -199,3 +199,20 @@ def test_remove_campaign_needs_confirm_delete(tmp_path):
     ads2, m2, _ = make(tmp_path, lambda cid, q: [])
     with pytest.raises(ValueError, match="tidak ditemukan"):
         m2.remove_campaign(CID, "1", confirm=False)
+
+
+def test_create_conversion_action_and_snippets(tmp_path):
+    from gads_mcp.mutations import install_snippets
+    ads, m, _ = make(tmp_path, lambda cid, q: [])
+    m.create_conversion_action(CID, "Klik WhatsApp", confirm=False)
+    op = ads.calls[-1][1]["operations"][0]
+    assert op.create.name == "Klik WhatsApp" and op.create.primary_for_goal is True
+    assert op.create.click_through_lookback_window_days == 30
+    ads2, m2, _ = make(tmp_path, lambda cid, q: [{"conversion_action.status": "ENABLED"}])
+    with pytest.raises(ValueError, match="sudah ada"):
+        m2.create_conversion_action(CID, "Klik WhatsApp", confirm=False)
+    snip = [{"type": "WEBPAGE", "event_snippet": "<script> gtag('event', 'conversion', {'send_to': 'AW-123/AbC_d-9'}); </script>"}]
+    out = install_snippets(snip)
+    assert out["send_to"] == "AW-123/AbC_d-9" and "gtag/js?id=AW-123" in out["kode_head"]
+    assert "wa.me" in out["kode_klik_whatsapp"] and "AW-123/AbC_d-9" in out["kode_klik_whatsapp"]
+    assert install_snippets([]) is None

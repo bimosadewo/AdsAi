@@ -415,6 +415,52 @@ class Mutator:
             verify=lambda: (self.ads.search(cid, q_ca) or [{}])[0],
         )
 
+    def create_conversion_action(self, cid: str, name: str, confirm: bool, category: str = "CONTACT",
+                                 primary_for_goal: bool = True, counting_type: str = "ONE_PER_CLICK",
+                                 value: float | None = None, click_through_days: int = 30) -> dict:
+        """Buat konversi halaman web (tag Google), mis. 'Klik WhatsApp'. Hasil: kode tag untuk dipasang di situs."""
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Nama konversi wajib diisi.")
+        cat = category.upper()
+        if not hasattr(self.gc.enums.ConversionActionCategoryEnum, cat):
+            raise ValueError(f"category tidak dikenal: {category} (mis. CONTACT, SUBMIT_LEAD_FORM, PURCHASE).")
+        ct = counting_type.upper()
+        if ct not in COUNTING_TYPES:
+            raise ValueError(f"counting_type harus salah satu dari {COUNTING_TYPES}")
+        if not 1 <= click_through_days <= 90:
+            raise ValueError("click_through_days harus 1-90.")
+        safe = name.replace("'", "")
+        q = ("SELECT conversion_action.id, conversion_action.name, conversion_action.status, "
+             "conversion_action.primary_for_goal, conversion_action.tag_snippets "
+             f"FROM conversion_action WHERE conversion_action.name = '{safe}'")
+        if any(str(r.get("conversion_action.status")) != "REMOVED" for r in self.ads.search(cid, q)):
+            raise ValueError(f"Konversi bernama '{name}' sudah ada. Pakai nama lain atau ubah yang ada.")
+        op = self.gc.get_type("ConversionActionOperation")
+        ca = op.create
+        ca.name = name
+        ca.type_ = self.gc.enums.ConversionActionTypeEnum.WEBPAGE
+        ca.category = getattr(self.gc.enums.ConversionActionCategoryEnum, cat)
+        ca.status = self.gc.enums.ConversionActionStatusEnum.ENABLED
+        ca.primary_for_goal = primary_for_goal
+        ca.counting_type = getattr(self.gc.enums.ConversionActionCountingTypeEnum, ct)
+        ca.click_through_lookback_window_days = click_through_days
+        ca.value_settings.default_value = float(value or 1)
+        ca.value_settings.always_use_default_value = True
+        after = {"nama": name, "kategori": cat, "utama": primary_for_goal, "cara_hitung": ct,
+                 "jangka_klik_hari": click_through_days}
+        notes = ["Konversi baru belum mencatat apa pun sampai tag dipasang di situs (lihat 'pasang_di_situs')."]
+
+        def verify():
+            rows = self.ads.search(cid, q)
+            return {"konversi": rows[0] if rows else None,
+                    "pasang_di_situs": install_snippets(rows[0].get("conversion_action.tag_snippets") if rows else None)}
+
+        return self._finish(
+            cid=cid, action="create_conversion_action", target={"nama": name}, before=None, after=after,
+            service="ConversionActionService", method="mutate_conversion_actions", operations=[op],
+            confirm=confirm, notes=notes, verify=verify)
+
     # ---------- bidding ----------
 
     def update_bid_strategy(self, cid: str, campaign_id: str, strategy: str, confirm: bool,
@@ -848,3 +894,31 @@ class Mutator:
             verify=lambda: {k.split(".")[-1]: v for k, v in self._ad_row(cid, ag, aid).items()
                             if k.endswith(("headlines", "descriptions", "final_urls", "approval_status", "ad_strength"))},
         )
+
+
+def _send_to(snippets: Any) -> str | None:
+    """Ambil 'AW-123/label' dari event snippet Google."""
+    import re
+    for sn in snippets or []:
+        m = re.search(r"send_to'?\"?\s*:\s*'?\"?(AW-[0-9]+/[A-Za-z0-9_-]+)", str(sn.get("event_snippet", "")))
+        if m:
+            return m.group(1)
+    return None
+
+
+def install_snippets(snippets: Any) -> dict[str, Any] | None:
+    """Kode siap tempel: tag global + pemicu konversi saat link WhatsApp/telepon diklik (tanpa GTM)."""
+    send_to = _send_to(snippets)
+    if not send_to:
+        return None
+    aw = send_to.split("/")[0]
+    head = (f'<script async src="https://www.googletagmanager.com/gtag/js?id={aw}"></script>\n'
+            "<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}"
+            f"gtag('js',new Date());gtag('config','{aw}');</script>")
+    click = ("<script>document.addEventListener('click',function(e){var a=e.target.closest&&"
+             "e.target.closest('a[href*=\"wa.me\"],a[href*=\"whatsapp.com\"],a[href^=\"whatsapp:\"]');"
+             f"if(a&&window.gtag){{gtag('event','conversion',{{'send_to':'{send_to}'}});}}}},true);</script>")
+    return {"send_to": send_to, "kode_head": head, "kode_klik_whatsapp": click,
+            "cara_pasang_wordpress": "Pasang plugin WPCode → Code Snippets → Header & Footer → tempel kode_head lalu "
+                                     "kode_klik_whatsapp di kolom Header → Save. Uji: klik tombol WA di situs, lalu "
+                                     "cek status konversi di Google Ads (bisa sampai 24 jam)."}
